@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: ./Lammah-game-backend
+    env_file:
+      - ./Lammah-game-backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://mongodb:27017/lammah-quiz
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongodb
+    volumes:
+      - backend_uploads:/app/uploads
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./Lammah-game-frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3000
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  backend_uploads:
+  mongodb_data:
