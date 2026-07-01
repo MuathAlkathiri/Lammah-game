@@ -47,6 +47,14 @@ Common optional values:
 
 ## Run locally
 
+From the repo root, you can run common workspace commands:
+
+```sh
+npm run build
+npm run lint
+npm test
+```
+
 Backend:
 
 ```sh

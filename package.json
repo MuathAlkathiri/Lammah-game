@@ -1,0 +1,19 @@
+{
+  "name": "lammah-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo for the Lammah Game backend and frontend.",
+  "workspaces": [
+    "Lammah-game-backend",
+    "Lammah-game-frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:backend": "npm run build --workspace Lammah-game-backend",
+    "build:frontend": "npm run build --workspace Lammah-game-frontend",
+    "dev:backend": "npm run start:dev --workspace Lammah-game-backend",
+    "dev:frontend": "npm run dev --workspace Lammah-game-frontend",
+    "lint": "npm run lint --workspace Lammah-game-frontend",
+    "test": "npm run test --workspace Lammah-game-backend -- --passWithNoTests"
+  }
+}

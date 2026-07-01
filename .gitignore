@@ -34,3 +34,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Local nested git backups
+.git.nested-backup/
