@@ -1,7 +1,8 @@
 services:
   backend:
     build:
-      context: ./Lammah-game-backend
+      context: .
+      dockerfile: Lammah-game-backend/Dockerfile
     env_file:
       - ./Lammah-game-backend/.env
     environment:
@@ -18,7 +19,8 @@ services:
 
   frontend:
     build:
-      context: ./Lammah-game-frontend
+      context: .
+      dockerfile: Lammah-game-frontend/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:3000
     environment:
