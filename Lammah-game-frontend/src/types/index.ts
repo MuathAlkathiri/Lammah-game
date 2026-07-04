@@ -1,5 +1,5 @@
-export type UserRole = 'admin' | 'user';
-export type SubscriptionStatus = 'none' | 'active' | 'expired';
+export type UserRole = "admin" | "user";
+export type SubscriptionStatus = "none" | "active" | "expired";
 
 export interface User {
   id: string;
@@ -41,15 +41,16 @@ export interface Category {
 }
 
 // Question types
-export type QuestionType = 'text' | 'image' | 'audio' | 'video';
-export type QuestionDifficulty = 'easy' | 'medium' | 'hard';
-export type QuestionStatus = 'draft' | 'approved' | 'rejected';
-export type QuestionSource = 'manual' | 'ai';
+export type QuestionType = "text" | "image" | "audio" | "video";
+export type QuestionDifficulty = "easy" | "medium" | "hard";
+export type QuestionStatus = "draft" | "approved" | "rejected";
+export type QuestionSource = "manual" | "ai";
 
 export interface Question {
   id: string;
   _id?: string;
   categoryId: string;
+  category?: Category | string;
   question: string;
   answer: string;
   explanation?: string;
@@ -86,7 +87,7 @@ export interface BoardQuestion {
 }
 
 // Game types
-export type GameStatus = 'setup' | 'in_progress' | 'finished';
+export type GameStatus = "setup" | "in_progress" | "finished";
 
 export interface Game {
   id: string;
@@ -97,11 +98,11 @@ export interface Game {
   teams?: Team[];
   categories: Category[];
   board: BoardQuestion[][];
-  currentTeamTurn: 'A' | 'B';
+  currentTeamTurn: "A" | "B";
   currentTeamIndex?: 0 | 1;
   currentQuestion?: Question;
   status: GameStatus;
-  winner?: 'A' | 'B' | 'draw';
+  winner?: "A" | "B" | "draw";
   createdAt: string;
   updatedAt: string;
 }

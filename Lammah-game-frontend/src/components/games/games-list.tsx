@@ -9,7 +9,7 @@ import { getEntityId, getStatusLabel } from '@/lib/utils';
 
 export function GamesList() {
   const { data, isLoading, error } = useGames();
-  const games = data?.data || [];
+  const games = data || [];
 
   if (isLoading) return <div className="text-center py-8">جاري التحميل...</div>;
   if (error) return <div className="text-center py-8 text-destructive">حدث خطأ</div>;

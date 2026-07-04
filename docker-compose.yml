@@ -8,7 +8,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      MONGODB_URI: mongodb://mongodb:27017/lammah-quiz
+      MONGODB_URI: ${BACKEND_MONGODB_URI:-mongodb://host.docker.internal:27017/lammah-quiz}
+      LMSTUDIO_BASE_URL: ${BACKEND_LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      LM_STUDIO_BASE_URL: ${BACKEND_LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      UPLOADS_DIR: /app/uploads
+      MUSIC_QUESTION_CATEGORY_SLUG: ${MUSIC_QUESTION_CATEGORY_SLUG:-songs}
+      MUSIC_DELETE_ORIGINAL_AFTER_SNIPPET: ${MUSIC_DELETE_ORIGINAL_AFTER_SNIPPET:-false}
     ports:
       - "3000:3000"
     depends_on:

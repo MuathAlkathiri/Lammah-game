@@ -35,7 +35,7 @@ export function SubscriptionAdmin() {
     },
   });
 
-  const users = usersData?.data || [];
+  const users = usersData || [];
   const status = watch('subscriptionStatus');
 
   const onSubmit = async (data: SubscriptionFormData) => {

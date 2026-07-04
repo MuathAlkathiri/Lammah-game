@@ -1,431 +1,489 @@
 import {
   BadRequestException,
-  HttpException,
-  HttpStatus,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { execFile } from 'child_process';
+import { randomUUID } from 'crypto';
+import { mkdir, rm, unlink, writeFile } from 'fs/promises';
+import { Model, Types } from 'mongoose';
+import { extname, join } from 'path';
+import { promisify } from 'util';
+import { Category } from '../categories/schemas/category.schema';
 import {
-  MusicGuessAnswerValidation,
-  MusicGuessQuestion,
-  SpotifyNormalizedTrack,
-  SpotifyTrackSeed,
-} from './types/spotify.types';
+  DifficultyLevel,
+  Question,
+  QuestionPoints,
+  QuestionSource,
+  QuestionStatus,
+  QuestionType,
+} from '../questions/schemas/question.schema';
+import { UploadMusicTrackDto, UpdateMusicTrackDto } from './dto/music.dto';
+import { MusicMetadataAgentService } from './music-metadata-agent.service';
+import { MusicTrack, MusicTrackSource } from './schemas/music-track.schema';
+import { normalizeMusicAnswer } from './utils/answer-normalization.util';
 
-interface SpotifyTokenResponse {
-  access_token?: string;
-  token_type?: string;
-  expires_in?: number;
-  error?: string;
-  error_description?: string;
+const execFileAsync = promisify(execFile);
+
+interface UploadedAudioFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
 }
 
-interface SpotifySearchResponse {
-  tracks?: {
-    items?: SpotifyTrack[];
-  };
-  error?: {
-    status?: number;
-    message?: string;
-  };
-}
-
-interface SpotifyTrack {
+export interface GuessSongQuestionResponse {
   id: string;
-  name: string;
-  artists: {
-    name: string;
-  }[];
-  album: {
-    name: string;
-    images?: {
-      url: string;
-      height?: number;
-      width?: number;
-    }[];
+  type: 'guess_song';
+  question: 'ما اسم هذه الأغنية؟';
+  audioUrl: string;
+  answer: string;
+  difficulty: DifficultyLevel;
+  metadata: {
+    artist?: string;
+    album?: string;
+    genre?: string;
+    language?: string;
+    source: 'admin-upload';
+    musicTrackId: string;
   };
-  external_urls: {
-    spotify: string;
-  };
-  preview_url?: string | null;
 }
 
 @Injectable()
 export class MusicService {
-  private static readonly DEFAULT_SPOTIFY_TRACK_SEEDS: SpotifyTrackSeed[] = [
-    { title: 'الأماكن', artist: 'محمد عبده' },
-    { title: 'مذهلة', artist: 'محمد عبده' },
-    { title: 'سكة سفر', artist: 'راشد الماجد' },
-    { title: 'الأغاني القديمة', artist: 'عبدالمجيد عبدالله' },
-    { title: 'يا بعدهم', artist: 'عبدالمجيد عبدالله' },
-    { title: 'وين أحب الليلة', artist: 'عبادي الجوهر' },
-    { title: 'بنت النور', artist: 'محمد عبده' },
-    { title: 'يا طيب القلب', artist: 'راشد الماجد' },
-    { title: 'مقادير', artist: 'طلال مداح' },
-    { title: 'أنا بتبع قلبي', artist: 'طلال مداح' },
+  private static readonly DEFAULT_SNIPPET_DURATION_SECONDS = 15;
+  private static readonly MIN_SNIPPET_DURATION_SECONDS = 10;
+  private static readonly MAX_SNIPPET_DURATION_SECONDS = 20;
+  private static readonly ALLOWED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a'];
+  private static readonly ALLOWED_AUDIO_MIME_TYPES = [
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/mp4',
+    'audio/m4a',
+    'audio/x-m4a',
   ];
 
-  private spotifyAccessToken?: string;
-  private spotifyTokenExpiresAt = 0;
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metadataAgentService: MusicMetadataAgentService,
+    @InjectModel(MusicTrack.name)
+    private readonly musicTrackModel: Model<MusicTrack>,
+    @InjectModel(Question.name)
+    private readonly questionModel: Model<Question>,
+    @InjectModel(Category.name)
+    private readonly categoryModel: Model<Category>,
+  ) {}
 
-  constructor(private readonly configService: ConfigService) {}
-
-  async searchTrack(
-    title: string,
-    artist?: string,
-  ): Promise<SpotifyNormalizedTrack> {
-    const cleanTitle = title.trim();
-    const cleanArtist = artist?.trim();
-
-    if (!cleanTitle) {
-      throw new BadRequestException('Title is required');
+  async createFromUpload(
+    file: UploadedAudioFile | undefined,
+    dto: UploadMusicTrackDto,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Audio file is required');
     }
 
-    const token = await this.getSpotifyAccessToken();
-    const market = this.configService.get<string>('SPOTIFY_MARKET') ?? 'SA';
-    const query = cleanArtist ? `${cleanTitle} ${cleanArtist}` : cleanTitle;
-    const searchParams = new URLSearchParams({
-      q: query,
-      type: 'track',
-      limit: '5',
-      market,
-    });
+    this.validateAudioFile(file);
 
-    const response = await fetch(
-      `https://api.spotify.com/v1/search?${searchParams.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    const uploadsRoot = this.getUploadsRoot();
+    const originalsDir = join(uploadsRoot, 'music', 'originals');
+    const snippetsDir = join(uploadsRoot, 'music', 'snippets');
+    await mkdir(originalsDir, { recursive: true });
+    await mkdir(snippetsDir, { recursive: true });
+
+    const id = randomUUID();
+    const extension = extname(file.originalname).toLowerCase();
+    const originalFilename = `${id}${extension}`;
+    const snippetFilename = `${id}-snippet.mp3`;
+    const originalPath = join(originalsDir, originalFilename);
+    const snippetPath = join(snippetsDir, snippetFilename);
+
+    await writeFile(originalPath, file.buffer);
+
+    try {
+      const durationSeconds = await this.getAudioDurationSeconds(originalPath);
+      const snippetDurationSeconds = this.getSnippetDuration(
+        dto.snippetDurationSeconds,
+      );
+      const snippetStartSecond = this.getSnippetStart(
+        dto.snippetStartSecond,
+        durationSeconds,
+        snippetDurationSeconds,
+      );
+
+      await this.createSnippet({
+        inputPath: originalPath,
+        outputPath: snippetPath,
+        startSecond: snippetStartSecond,
+        durationSeconds: snippetDurationSeconds,
+      });
+
+      const metadata = await this.metadataAgentService.inferMetadata({
+        filename: file.originalname,
+        title: dto.title,
+        artist: dto.artist,
+        album: dto.album,
+        language: dto.language,
+        genre: dto.genre,
+        difficulty: dto.difficulty,
+      });
+
+      const shouldDeleteOriginal = this.getBooleanConfig(
+        'MUSIC_DELETE_ORIGINAL_AFTER_SNIPPET',
+        false,
+      );
+
+      if (shouldDeleteOriginal) {
+        await unlink(originalPath).catch(() => undefined);
+      }
+
+      const musicTrack = await this.musicTrackModel.create({
+        title: metadata.title,
+        artist: metadata.artist,
+        album: metadata.album,
+        originalAudioUrl: shouldDeleteOriginal
+          ? undefined
+          : `/uploads/music/originals/${originalFilename}`,
+        snippetAudioUrl: `/uploads/music/snippets/${snippetFilename}`,
+        durationSeconds,
+        snippetStartSecond,
+        snippetDurationSeconds,
+        language: metadata.language,
+        genre: metadata.genre,
+        difficulty: metadata.difficulty,
+        source: MusicTrackSource.ADMIN_UPLOAD,
+        isActive: true,
+      });
+
+      const question = await this.createQuestionForTrack(musicTrack);
+
+      return {
+        musicTrack,
+        question: this.toGuessSongQuestion(question, musicTrack),
+      };
+    } catch (error) {
+      await rm(snippetPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async findAll() {
+    return this.musicTrackModel.find().sort({ createdAt: -1 }).exec();
+  }
+
+  async findById(id: string) {
+    this.assertValidObjectId(id, 'id');
+
+    const musicTrack = await this.musicTrackModel.findById(id).exec();
+
+    if (!musicTrack) {
+      throw new NotFoundException(`Music track with ID "${id}" not found`);
+    }
+
+    return musicTrack;
+  }
+
+  async update(id: string, dto: UpdateMusicTrackDto) {
+    this.assertValidObjectId(id, 'id');
+
+    const musicTrack = await this.musicTrackModel
+      .findByIdAndUpdate(id, dto, { new: true })
+      .exec();
+
+    if (!musicTrack) {
+      throw new NotFoundException(`Music track with ID "${id}" not found`);
+    }
+
+    await this.questionModel
+      .updateMany(
+        { musicTrack: musicTrack._id },
+        {
+          answer: musicTrack.title,
+          difficulty: musicTrack.difficulty ?? DifficultyLevel.EASY,
+          metadata: this.buildQuestionMetadata(musicTrack),
         },
-      },
-    );
+      )
+      .exec();
 
-    const data =
-      await this.readSpotifyResponse<SpotifySearchResponse>(response);
-
-    if (response.status === HttpStatus.TOO_MANY_REQUESTS) {
-      throw new HttpException(
-        'Spotify rate limit exceeded. Please try again later.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    if (!response.ok) {
-      throw new InternalServerErrorException(
-        `Spotify search failed: ${
-          data.error?.message ??
-          data.rawMessage ??
-          `Spotify returned ${response.status}`
-        }`,
-      );
-    }
-
-    const tracks = data.tracks?.items ?? [];
-    const bestTrack = this.pickBestTrackMatch(tracks, cleanTitle, cleanArtist);
-
-    if (!bestTrack) {
-      throw new NotFoundException(
-        cleanArtist
-          ? `Spotify track not found for "${cleanTitle}" by "${cleanArtist}"`
-          : `Spotify track not found for "${cleanTitle}"`,
-      );
-    }
-
-    return this.normalizeSpotifyTrack(bestTrack);
+    return musicTrack;
   }
 
-  async generateMusicGuessQuestionFromSpotifyTrack(
-    title: string,
-    artist?: string,
-  ): Promise<MusicGuessQuestion> {
-    const song = await this.searchTrack(title, artist);
+  async softDelete(id: string) {
+    this.assertValidObjectId(id, 'id');
 
-    return {
-      type: 'music_guess',
-      question: 'Listen to the song preview and type the song name.',
-      answerType: 'text',
-      correctAnswer: song.title,
-      acceptedAnswers: this.buildAcceptedAnswers(song.title),
-      song,
-    };
+    const musicTrack = await this.musicTrackModel
+      .findByIdAndUpdate(id, { isActive: false }, { new: true })
+      .exec();
+
+    if (!musicTrack) {
+      throw new NotFoundException(`Music track with ID "${id}" not found`);
+    }
+
+    await this.questionModel
+      .updateMany(
+        { musicTrack: musicTrack._id },
+        { status: QuestionStatus.REJECTED },
+      )
+      .exec();
+
+    return musicTrack;
   }
 
-  async generateSeededMusicGuessQuestions(
-    count: number,
-  ): Promise<MusicGuessQuestion[]> {
-    const seeds = this.getSpotifyTrackSeeds();
+  async validateAnswer(questionId: string, answer: string) {
+    this.assertValidObjectId(questionId, 'questionId');
 
-    if (seeds.length === 0) {
-      throw new InternalServerErrorException(
-        'No Spotify seed tracks configured for music question generation.',
-      );
+    const question = await this.questionModel.findById(questionId).exec();
+
+    if (!question) {
+      throw new NotFoundException(`Question with ID "${questionId}" not found`);
     }
 
-    const selectedSeeds = this.pickSeedTracks(seeds, count);
-    const questions: MusicGuessQuestion[] = [];
-
-    for (const seed of selectedSeeds) {
-      questions.push(
-        await this.generateMusicGuessQuestionFromSpotifyTrack(
-          seed.title,
-          seed.artist,
-        ),
-      );
+    if (
+      question.type !== QuestionType.AUDIO ||
+      question.source !== QuestionSource.MUSIC ||
+      !question.mediaUrl
+    ) {
+      throw new BadRequestException('Question is not a music audio question');
     }
 
-    return questions;
-  }
+    const normalizedAnswer = normalizeMusicAnswer(answer);
+    const normalizedCorrectAnswer = normalizeMusicAnswer(question.answer);
 
-  validateMusicGuessAnswer(
-    userAnswer: string,
-    correctAnswer: string,
-  ): MusicGuessAnswerValidation {
-    const normalizedUserAnswer = this.normalizeAnswer(userAnswer);
-    const normalizedCorrectAnswer = this.normalizeAnswer(correctAnswer);
-
-    if (!normalizedUserAnswer) {
-      throw new BadRequestException('User answer is required');
-    }
-
-    if (!normalizedCorrectAnswer) {
-      throw new BadRequestException('Correct answer is required');
+    if (!normalizedAnswer) {
+      throw new BadRequestException('Answer is required');
     }
 
     return {
-      isCorrect: normalizedUserAnswer === normalizedCorrectAnswer,
-      normalizedUserAnswer,
+      isCorrect: normalizedAnswer === normalizedCorrectAnswer,
+      normalizedAnswer,
       normalizedCorrectAnswer,
     };
   }
 
-  private async getSpotifyAccessToken(): Promise<string> {
-    this.ensureSpotifyConfig();
+  private validateAudioFile(file: UploadedAudioFile) {
+    const extension = extname(file.originalname).toLowerCase();
 
-    const now = Date.now();
-    if (this.spotifyAccessToken && now < this.spotifyTokenExpiresAt) {
-      return this.spotifyAccessToken;
+    if (!MusicService.ALLOWED_AUDIO_EXTENSIONS.includes(extension)) {
+      throw new BadRequestException('Only mp3, wav, and m4a files are allowed');
     }
 
-    const clientId = this.configService.get<string>('SPOTIFY_CLIENT_ID')!;
-    const clientSecret = this.configService.get<string>(
-      'SPOTIFY_CLIENT_SECRET',
-    )!;
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-      'base64',
-    );
-
-    const response = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-      }).toString(),
-    });
-
-    const data = await this.readSpotifyResponse<SpotifyTokenResponse>(response);
-
-    if (response.status === HttpStatus.TOO_MANY_REQUESTS) {
-      throw new HttpException(
-        'Spotify rate limit exceeded while requesting an access token.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    if (!response.ok || !data.access_token || !data.expires_in) {
-      throw new InternalServerErrorException(
-        `Spotify token request failed: ${
-          data.error_description ??
-          data.error ??
-          data.rawMessage ??
-          `Spotify returned ${response.status}`
-        }`,
-      );
-    }
-
-    this.spotifyAccessToken = data.access_token;
-    this.spotifyTokenExpiresAt = now + (data.expires_in - 60) * 1000;
-
-    return this.spotifyAccessToken;
-  }
-
-  private ensureSpotifyConfig() {
-    const clientId = this.configService.get<string>('SPOTIFY_CLIENT_ID');
-    const clientSecret = this.configService.get<string>(
-      'SPOTIFY_CLIENT_SECRET',
-    );
-
-    if (!clientId || !clientSecret) {
-      throw new InternalServerErrorException(
-        'Spotify is not configured. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.',
-      );
-    }
-  }
-
-  private async readSpotifyResponse<T>(
-    response: Response,
-  ): Promise<T & { rawMessage?: string }> {
-    const text = await response.text();
-
-    if (!text) {
-      return {} as T & { rawMessage?: string };
-    }
-
-    try {
-      return JSON.parse(text) as T & { rawMessage?: string };
-    } catch {
-      return {
-        rawMessage: text,
-      } as T & { rawMessage: string };
-    }
-  }
-
-  private pickBestTrackMatch(
-    tracks: SpotifyTrack[],
-    title: string,
-    artist?: string,
-  ): SpotifyTrack | undefined {
-    if (tracks.length === 0) {
-      return undefined;
-    }
-
-    const normalizedTitle = this.normalizeAnswer(title);
-    const normalizedArtist = artist ? this.normalizeAnswer(artist) : undefined;
-
-    return [...tracks].sort((a, b) => {
-      const scoreA = this.scoreTrackMatch(a, normalizedTitle, normalizedArtist);
-      const scoreB = this.scoreTrackMatch(b, normalizedTitle, normalizedArtist);
-
-      return scoreB - scoreA;
-    })[0];
-  }
-
-  private scoreTrackMatch(
-    track: SpotifyTrack,
-    normalizedTitle: string,
-    normalizedArtist?: string,
-  ): number {
-    const trackTitle = this.normalizeAnswer(track.name);
-    const trackArtists = track.artists.map((artist) =>
-      this.normalizeAnswer(artist.name),
-    );
-
-    let score = 0;
-
-    if (trackTitle === normalizedTitle) {
-      score += 100;
-    } else if (
-      trackTitle.includes(normalizedTitle) ||
-      normalizedTitle.includes(trackTitle)
+    if (
+      file.mimetype &&
+      !MusicService.ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype)
     ) {
-      score += 50;
+      throw new BadRequestException('Only mp3, wav, and m4a files are allowed');
     }
-
-    if (normalizedArtist) {
-      if (trackArtists.some((artist) => artist === normalizedArtist)) {
-        score += 80;
-      } else if (
-        trackArtists.some(
-          (artist) =>
-            artist.includes(normalizedArtist) ||
-            normalizedArtist.includes(artist),
-        )
-      ) {
-        score += 35;
-      }
-    }
-
-    return score;
   }
 
-  private normalizeSpotifyTrack(track: SpotifyTrack): SpotifyNormalizedTrack {
-    const albumImageUrl = track.album.images?.[0]?.url;
-    const previewUrl = track.preview_url ?? null;
+  private getSnippetDuration(value?: number): number {
+    if (value === undefined) {
+      return MusicService.DEFAULT_SNIPPET_DURATION_SECONDS;
+    }
 
+    if (!Number.isFinite(value)) {
+      throw new BadRequestException('snippetDurationSeconds must be a number');
+    }
+
+    return Math.min(
+      Math.max(value, MusicService.MIN_SNIPPET_DURATION_SECONDS),
+      MusicService.MAX_SNIPPET_DURATION_SECONDS,
+    );
+  }
+
+  private getSnippetStart(
+    requestedStart: number | undefined,
+    durationSeconds: number | undefined,
+    snippetDurationSeconds: number,
+  ) {
+    const duration = durationSeconds ?? 0;
+    const maxStart = Math.max(duration - snippetDurationSeconds, 0);
+    const defaultStart = duration >= 30 + snippetDurationSeconds ? 30 : 0;
+    const start = requestedStart ?? defaultStart;
+
+    return Math.min(Math.max(start, 0), maxStart);
+  }
+
+  private async getAudioDurationSeconds(filePath: string) {
+    try {
+      const { stdout } = await execFileAsync('ffprobe', [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ]);
+      const duration = Number(stdout.trim());
+
+      return Number.isFinite(duration)
+        ? Math.round(duration * 100) / 100
+        : undefined;
+    } catch (error) {
+      this.throwFfmpegError(error, 'FFprobe failed to inspect the audio file');
+    }
+  }
+
+  private async createSnippet(input: {
+    inputPath: string;
+    outputPath: string;
+    startSecond: number;
+    durationSeconds: number;
+  }) {
+    try {
+      await execFileAsync('ffmpeg', [
+        '-y',
+        '-ss',
+        String(input.startSecond),
+        '-i',
+        input.inputPath,
+        '-t',
+        String(input.durationSeconds),
+        '-vn',
+        '-acodec',
+        'libmp3lame',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
+        input.outputPath,
+      ]);
+    } catch (error) {
+      this.throwFfmpegError(error, 'FFmpeg failed to create the audio snippet');
+    }
+  }
+
+  private throwFfmpegError(error: unknown, fallbackMessage: string): never {
+    if (
+      error instanceof Error &&
+      ('code' in error || error.message.includes('ENOENT'))
+    ) {
+      throw new InternalServerErrorException(
+        'FFmpeg is not installed or is not available in PATH. Install ffmpeg locally and rebuild the backend Docker image.',
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new InternalServerErrorException(`${fallbackMessage}: ${message}`);
+  }
+
+  private async createQuestionForTrack(musicTrack: MusicTrack) {
+    if (!musicTrack.snippetAudioUrl) {
+      throw new BadRequestException(
+        'Cannot create music question without audio',
+      );
+    }
+
+    const category = await this.getMusicCategory();
+    const difficulty = musicTrack.difficulty ?? DifficultyLevel.EASY;
+
+    return this.questionModel.create({
+      category: category._id,
+      question: 'ما اسم هذه الأغنية؟',
+      answer: musicTrack.title,
+      explanation: musicTrack.artist
+        ? `الأغنية هي "${musicTrack.title}" للفنان ${musicTrack.artist}.`
+        : `الأغنية هي "${musicTrack.title}".`,
+      difficulty,
+      points: this.pointsForDifficulty(difficulty),
+      type: QuestionType.AUDIO,
+      mediaUrl: musicTrack.snippetAudioUrl,
+      mediaKey: `admin-upload:${musicTrack._id.toString()}`,
+      musicTrack: musicTrack._id,
+      hasPreviewAudio: true,
+      status: QuestionStatus.DRAFT,
+      source: QuestionSource.MUSIC,
+      isFreeGameQuestion: false,
+      metadata: this.buildQuestionMetadata(musicTrack),
+    });
+  }
+
+  private buildQuestionMetadata(musicTrack: MusicTrack) {
     return {
-      spotifyTrackId: track.id,
-      title: track.name,
-      artist: track.artists.map((artist) => artist.name).join(', '),
-      albumName: track.album.name,
-      albumImageUrl,
-      spotifyUrl: track.external_urls.spotify,
-      previewUrl,
-      hasPreviewAudio: !!previewUrl,
+      artist: musicTrack.artist,
+      album: musicTrack.album,
+      genre: musicTrack.genre,
+      language: musicTrack.language,
+      source: MusicTrackSource.ADMIN_UPLOAD,
+      musicTrackId: musicTrack._id.toString(),
     };
   }
 
-  private buildAcceptedAnswers(title: string): string[] {
-    const normalizedTitle = this.normalizeAnswer(title);
-
-    return normalizedTitle === title
-      ? [title]
-      : Array.from(new Set([title, normalizedTitle]));
+  private toGuessSongQuestion(
+    question: Question,
+    musicTrack: MusicTrack,
+  ): GuessSongQuestionResponse {
+    return {
+      id: question._id.toString(),
+      type: 'guess_song',
+      question: 'ما اسم هذه الأغنية؟',
+      audioUrl: musicTrack.snippetAudioUrl,
+      answer: musicTrack.title,
+      difficulty: musicTrack.difficulty ?? DifficultyLevel.EASY,
+      metadata: this.buildQuestionMetadata(musicTrack),
+    };
   }
 
-  private getSpotifyTrackSeeds(): SpotifyTrackSeed[] {
-    const rawSeeds = this.configService.get<string>('SPOTIFY_SEED_TRACKS');
+  private async getMusicCategory() {
+    const configuredSlug =
+      this.configService.get<string>('MUSIC_QUESTION_CATEGORY_SLUG') ?? 'songs';
+    const category = await this.categoryModel
+      .findOne({
+        isActive: true,
+        $or: [
+          { slug: configuredSlug },
+          { slug: 'music' },
+          { slug: 'songs' },
+          { name: /^(music|songs|أغاني|اغاني|موسيقى)$/i },
+        ],
+      })
+      .exec();
 
-    if (!rawSeeds) {
-      return MusicService.DEFAULT_SPOTIFY_TRACK_SEEDS;
-    }
-
-    try {
-      const parsed = JSON.parse(rawSeeds) as SpotifyTrackSeed[];
-
-      if (!Array.isArray(parsed)) {
-        throw new Error('SPOTIFY_SEED_TRACKS must be a JSON array');
-      }
-
-      const seeds: SpotifyTrackSeed[] = [];
-
-      for (const seed of parsed) {
-        const seedTitle = seed.title?.trim();
-
-        if (seedTitle) {
-          seeds.push({
-            title: seedTitle,
-            artist: seed.artist?.trim(),
-          });
-        }
-      }
-
-      return seeds;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+    if (!category) {
       throw new InternalServerErrorException(
-        `Invalid SPOTIFY_SEED_TRACKS configuration: ${errorMessage}`,
-      );
-    }
-  }
-
-  private pickSeedTracks(
-    seeds: SpotifyTrackSeed[],
-    count: number,
-  ): SpotifyTrackSeed[] {
-    const shuffledSeeds = [...seeds].sort(() => Math.random() - 0.5);
-    const selectedSeeds: SpotifyTrackSeed[] = [];
-
-    while (selectedSeeds.length < count) {
-      selectedSeeds.push(
-        shuffledSeeds[selectedSeeds.length % shuffledSeeds.length],
+        `Music question category "${configuredSlug}" was not found. Set MUSIC_QUESTION_CATEGORY_SLUG or create a music/songs category.`,
       );
     }
 
-    return selectedSeeds;
+    return category;
   }
 
-  private normalizeAnswer(answer: string): string {
-    return answer
-      .normalize('NFKC')
-      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-      .replace(/[\p{P}\p{S}]/gu, ' ')
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, ' ');
+  private pointsForDifficulty(difficulty: DifficultyLevel): QuestionPoints {
+    if (difficulty === DifficultyLevel.HARD) {
+      return QuestionPoints.HIGH;
+    }
+
+    if (difficulty === DifficultyLevel.MEDIUM) {
+      return QuestionPoints.MEDIUM;
+    }
+
+    return QuestionPoints.LOW;
+  }
+
+  private getUploadsRoot() {
+    const configuredPath = this.configService.get<string>('UPLOADS_DIR');
+
+    return configuredPath
+      ? join(configuredPath)
+      : join(process.cwd(), 'uploads');
+  }
+
+  private getBooleanConfig(key: string, defaultValue: boolean): boolean {
+    const value = this.configService.get<string>(key);
+
+    if (!value) {
+      return defaultValue;
+    }
+
+    return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
+  }
+
+  private assertValidObjectId(id: string, fieldName: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`${fieldName} must be a valid MongoDB ID`);
+    }
   }
 }

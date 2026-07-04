@@ -19,8 +19,6 @@ import {
   GeneratedQuestionsArraySchema,
   GeneratedQuestion,
 } from './schemas/generated-question.schema';
-import { MusicService } from '../music/music.service';
-import { MusicGuessQuestion } from '../music/types/spotify.types';
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +66,6 @@ export class AiAgentService {
   constructor(
     private configService: ConfigService,
     private categoriesService: CategoriesService,
-    private musicService: MusicService,
     @InjectModel(Question.name) private questionModel: Model<Question>,
   ) {
     this.aiProvider =
@@ -151,7 +148,9 @@ export class AiAgentService {
 
     try {
       if (this.isSongsCategory(category.name)) {
-        return this.generateSongQuestionsFromSpotify(categoryId, count);
+        throw new BadRequestException(
+          'Music questions must be created from admin-uploaded audio via /admin/music-tracks/upload.',
+        );
       }
 
       const prompt = this.buildPrompt(category.name, count);
@@ -237,87 +236,6 @@ export class AiAgentService {
     }
   }
 
-  private async generateSongQuestionsFromSpotify(
-    categoryId: string,
-    count: number,
-  ) {
-    const spotifyQuestions =
-      await this.musicService.generateSeededMusicGuessQuestions(count);
-    const draftQuestions =
-      this.mapSpotifyQuestionsToDraftQuestions(spotifyQuestions);
-    const uniqueQuestions = await this.removeDuplicates(
-      draftQuestions,
-      categoryId,
-    );
-
-    if (uniqueQuestions.length === 0) {
-      throw new BadRequestException(
-        'No valid Spotify music questions were generated or all generated questions are duplicates',
-      );
-    }
-
-    const savedQuestions = await this.saveDraftQuestions(
-      uniqueQuestions,
-      categoryId,
-    );
-
-    console.log(
-      `Spotify music generation summary: generated=${spotifyQuestions.length}, rejected=${draftQuestions.length - uniqueQuestions.length}, saved=${savedQuestions.length}`,
-    );
-
-    return {
-      message: 'Questions generated successfully',
-      count: savedQuestions.length,
-      data: savedQuestions,
-    };
-  }
-
-  private mapSpotifyQuestionsToDraftQuestions(
-    questions: MusicGuessQuestion[],
-  ): DraftGeneratedQuestion[] {
-    const questionCounts = this.getQuestionCountsByDifficulty(questions.length);
-    const difficulties = [
-      ...Array(questionCounts.easy).fill({
-        difficulty: 'easy' as const,
-        points: 200,
-      }),
-      ...Array(questionCounts.medium).fill({
-        difficulty: 'medium' as const,
-        points: 400,
-      }),
-      ...Array(questionCounts.hard).fill({
-        difficulty: 'hard' as const,
-        points: 600,
-      }),
-    ];
-
-    return questions.map((question, index) => {
-      const difficulty = difficulties[index] ?? {
-        difficulty: 'easy' as const,
-        points: 200,
-      };
-
-      return {
-        question: `استمع إلى مقطع الأغنية واكتب اسمها. الفنان: ${question.song.artist}`,
-        answer: question.correctAnswer,
-        explanation: `الأغنية هي "${question.song.title}" للفنان ${question.song.artist} من ألبوم "${question.song.albumName}".`,
-        difficulty: difficulty.difficulty,
-        points: difficulty.points,
-        type: 'audio',
-        mediaUrl: question.song.previewUrl ?? undefined,
-        mediaKey: question.song.previewUrl
-          ? `spotify:${question.song.spotifyTrackId}`
-          : undefined,
-        spotifyTrackId: question.song.spotifyTrackId,
-        spotifyArtist: question.song.artist,
-        spotifyAlbumName: question.song.albumName,
-        spotifyAlbumImageUrl: question.song.albumImageUrl,
-        spotifyUrl: question.song.spotifyUrl,
-        hasPreviewAudio: question.song.hasPreviewAudio,
-      };
-    });
-  }
-
   private buildPrompt(categoryName: string, count: number): string {
     const questionCounts = this.getQuestionCountsByDifficulty(count);
     const categorySpecificRules =
@@ -350,7 +268,6 @@ Question style:
 ${categorySpecificRules}
 
 Media rules:
-- If the category is songs: every question must be audio-type
 - If the category is movies/series/anime: include at least 1 video or image-type question
 - If the category is sports: mostly text questions
 - If the category is geography/history: text questions only unless a media clue is clearly useful

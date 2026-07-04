@@ -20,17 +20,17 @@ export function AIGenerator() {
   const generateQuestions = useGenerateQuestions();
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
-  const categories = categoriesData?.data || [];
+  const categories = categoriesData || [];
 
   const handleGenerate = async () => {
     if (!selectedCategory) return;
 
     try {
-      const response = await generateQuestions.mutateAsync({
+      const questions = await generateQuestions.mutateAsync({
         categoryId: selectedCategory,
         count: 10,
       });
-      setGeneratedQuestions(response.data || []);
+      setGeneratedQuestions(questions || []);
     } catch (error) {
       console.error('Failed to generate questions:', error);
     }

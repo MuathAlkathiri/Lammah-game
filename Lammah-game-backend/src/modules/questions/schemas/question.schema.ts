@@ -29,6 +29,7 @@ export enum QuestionStatus {
 export enum QuestionSource {
   MANUAL = 'manual',
   AI = 'ai',
+  MUSIC = 'music',
 }
 
 @Schema({ timestamps: true })
@@ -75,6 +76,12 @@ export class Question extends Document {
 
   @Prop()
   mediaKey?: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'MusicTrack' })
+  musicTrack?: Types.ObjectId;
+
+  @Prop({ type: Object })
+  metadata?: Record<string, unknown>;
 
   @Prop()
   spotifyTrackId?: string;

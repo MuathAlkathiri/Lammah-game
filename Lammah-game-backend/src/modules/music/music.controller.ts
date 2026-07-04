@@ -1,17 +1,22 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
+  Param,
+  Patch,
   Post,
-  Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
-  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -20,66 +25,55 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UserRole } from '../users/schemas/user.schema';
 import {
-  GenerateMusicGuessQuestionDto,
-  SearchSpotifyTrackQueryDto,
-  ValidateMusicGuessAnswerDto,
+  UpdateMusicTrackDto,
+  UploadMusicTrackDto,
+  ValidateMusicQuestionAnswerDto,
 } from './dto/music.dto';
 import { MusicService } from './music.service';
 
-@ApiTags('Music')
+@ApiTags('Admin Music Tracks')
 @ApiBearerAuth()
-@Controller('music')
+@Controller('admin/music-tracks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
-export class MusicController {
+export class AdminMusicTracksController {
   constructor(private readonly musicService: MusicService) {}
 
-  @Get('spotify/search')
-  @ApiOperation({ summary: 'Search Spotify for a track' })
-  @ApiQuery({ name: 'title', required: true, example: 'Blinding Lights' })
-  @ApiQuery({ name: 'artist', required: false, example: 'The Weeknd' })
-  @ApiResponse({
-    status: 200,
-    description: 'Spotify track found',
-  })
-  async searchSpotifyTrack(@Query() query: SearchSpotifyTrackQueryDto) {
-    const data = await this.musicService.searchTrack(query.title, query.artist);
-
-    return {
-      statusCode: HttpStatus.OK,
-      data,
-    };
-  }
-
-  @Post('spotify/generate-question')
+  @Post('upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 50 * 1024 * 1024,
+      },
+    }),
+  )
   @ApiOperation({
-    summary: 'Generate a music guess question from Spotify track metadata',
-    description:
-      'Spotify is the source of truth for the correct answer. This endpoint does not create multiple-choice options.',
+    summary: 'Upload an audio file and create a guess-the-song question',
   })
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
-    type: GenerateMusicGuessQuestionDto,
-    examples: {
-      default: {
-        value: {
-          title: 'Blinding Lights',
-          artist: 'The Weeknd',
-        },
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        title: { type: 'string' },
+        artist: { type: 'string' },
+        album: { type: 'string' },
+        language: { type: 'string', enum: ['ar', 'en', 'other'] },
+        genre: { type: 'string' },
+        difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+        snippetDurationSeconds: { type: 'number', minimum: 10, maximum: 20 },
+        snippetStartSecond: { type: 'number', minimum: 0 },
       },
     },
   })
   @ApiResponse({
     status: 201,
-    description: 'Music guess question generated',
+    description: 'Music track and question created',
   })
-  async generateMusicGuessQuestion(
-    @Body() body: GenerateMusicGuessQuestionDto,
-  ) {
-    const data =
-      await this.musicService.generateMusicGuessQuestionFromSpotifyTrack(
-        body.title,
-        body.artist,
-      );
+  async upload(@UploadedFile() file: any, @Body() body: UploadMusicTrackDto) {
+    const data = await this.musicService.createFromUpload(file, body);
 
     return {
       statusCode: HttpStatus.CREATED,
@@ -87,15 +81,65 @@ export class MusicController {
     };
   }
 
-  @Post('spotify/validate-answer')
-  @ApiOperation({ summary: 'Validate a typed music guess answer' })
+  @Get()
+  @ApiOperation({ summary: 'List uploaded music tracks' })
+  async findAll() {
+    const data = await this.musicService.findAll();
+
+    return {
+      statusCode: HttpStatus.OK,
+      data,
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one uploaded music track' })
+  async findOne(@Param('id') id: string) {
+    const data = await this.musicService.findById(id);
+
+    return {
+      statusCode: HttpStatus.OK,
+      data,
+    };
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update music track metadata' })
+  async update(@Param('id') id: string, @Body() body: UpdateMusicTrackDto) {
+    const data = await this.musicService.update(id, body);
+
+    return {
+      statusCode: HttpStatus.OK,
+      data,
+    };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Soft-delete a music track' })
+  async remove(@Param('id') id: string) {
+    const data = await this.musicService.softDelete(id);
+
+    return {
+      statusCode: HttpStatus.OK,
+      data,
+    };
+  }
+}
+
+@ApiTags('Music Questions')
+@Controller('music/questions')
+export class MusicQuestionsController {
+  constructor(private readonly musicService: MusicService) {}
+
+  @Post('validate-answer')
+  @ApiOperation({ summary: 'Validate a typed answer for a music question' })
   @ApiBody({
-    type: ValidateMusicGuessAnswerDto,
+    type: ValidateMusicQuestionAnswerDto,
     examples: {
       default: {
         value: {
-          userAnswer: 'blinding lights',
-          correctAnswer: 'Blinding Lights',
+          questionId: '507f1f77bcf86cd799439011',
+          answer: 'الأماكن',
         },
       },
     },
@@ -104,10 +148,12 @@ export class MusicController {
     status: 201,
     description: 'Answer validation result',
   })
-  validateMusicGuessAnswer(@Body() body: ValidateMusicGuessAnswerDto) {
-    const data = this.musicService.validateMusicGuessAnswer(
-      body.userAnswer,
-      body.correctAnswer,
+  async validateMusicQuestionAnswer(
+    @Body() body: ValidateMusicQuestionAnswerDto,
+  ) {
+    const data = await this.musicService.validateAnswer(
+      body.questionId,
+      body.answer,
     );
 
     return {

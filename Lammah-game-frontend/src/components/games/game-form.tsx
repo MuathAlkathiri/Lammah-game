@@ -35,7 +35,7 @@ export function GameForm() {
   const { data: categoriesData } = useCategories();
   const createGame = useCreateGame();
   const selectedCategories = watch('categoryIds') || [];
-  const categories = categoriesData?.data || [];
+  const categories = categoriesData || [];
   const [submitError, setSubmitError] = useState('');
 
   const handleCategoryToggle = (categoryId: string) => {
@@ -64,8 +64,8 @@ export function GameForm() {
         categoryIds: data.categoryIds,
       };
 
-      const response = await createGame.mutateAsync(gameData);
-      router.push(`/games/${getEntityId(response.data)}`);
+      const game = await createGame.mutateAsync(gameData);
+      router.push(`/games/${getEntityId(game)}`);
     } catch (error) {
       const backendMessage = axios.isAxiosError(error)
         ? error.response?.data?.message || error.response?.data?.error

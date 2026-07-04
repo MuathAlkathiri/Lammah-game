@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { INestApplication } from '@nestjs/common';
 import express from 'express';
@@ -64,8 +65,11 @@ async function listen(app: INestApplication, port: number): Promise<number> {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+  const uploadsRoot =
+    configService.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads');
 
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+  app.use('/uploads', express.static(uploadsRoot));
 
   app.enableCors({
     origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],

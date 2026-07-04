@@ -1,42 +1,102 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
-  MusicGuessQuestion,
-  MusicGuessAnswerValidation,
-  SpotifyNormalizedTrack,
-} from '../types/spotify.types';
+  IsBoolean,
+  IsEnum,
+  IsMongoId,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
+import { DifficultyLevel } from '../../questions/schemas/question.schema';
+import { MusicTrackLanguage } from '../schemas/music-track.schema';
 
-export class SearchSpotifyTrackQueryDto {
-  @IsString({ message: 'Title must be a string' })
-  @MinLength(1, { message: 'Title is required' })
-  title: string;
+export class UploadMusicTrackDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  title?: string;
 
   @IsOptional()
-  @IsString({ message: 'Artist must be a string' })
-  @MinLength(1, { message: 'Artist cannot be empty' })
+  @IsString()
+  @MinLength(1)
   artist?: string;
-}
-
-export class GenerateMusicGuessQuestionDto {
-  @IsString({ message: 'Title must be a string' })
-  @MinLength(1, { message: 'Title is required' })
-  title: string;
 
   @IsOptional()
-  @IsString({ message: 'Artist must be a string' })
-  @MinLength(1, { message: 'Artist cannot be empty' })
+  @IsString()
+  @MinLength(1)
+  album?: string;
+
+  @IsOptional()
+  @IsEnum(MusicTrackLanguage)
+  language?: MusicTrackLanguage;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  genre?: string;
+
+  @IsOptional()
+  @IsEnum(DifficultyLevel)
+  difficulty?: DifficultyLevel;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(10)
+  @Max(20)
+  snippetDurationSeconds?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  snippetStartSecond?: number;
+}
+
+export class UpdateMusicTrackDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   artist?: string;
+
+  @IsOptional()
+  @IsString()
+  album?: string;
+
+  @IsOptional()
+  @IsString()
+  artworkUrl?: string;
+
+  @IsOptional()
+  @IsEnum(MusicTrackLanguage)
+  language?: MusicTrackLanguage;
+
+  @IsOptional()
+  @IsString()
+  genre?: string;
+
+  @IsOptional()
+  @IsEnum(DifficultyLevel)
+  difficulty?: DifficultyLevel;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isActive?: boolean;
 }
 
-export class ValidateMusicGuessAnswerDto {
-  @IsString({ message: 'User answer must be a string' })
-  @MinLength(1, { message: 'User answer is required' })
-  userAnswer: string;
+export class ValidateMusicQuestionAnswerDto {
+  @IsMongoId({ message: 'questionId must be a valid MongoDB ID' })
+  questionId: string;
 
-  @IsString({ message: 'Correct answer must be a string' })
-  @MinLength(1, { message: 'Correct answer is required' })
-  correctAnswer: string;
+  @IsString({ message: 'Answer must be a string' })
+  @MinLength(1, { message: 'Answer is required' })
+  answer: string;
 }
-
-export type SearchSpotifyTrackResponseDto = SpotifyNormalizedTrack;
-export type GenerateMusicGuessQuestionResponseDto = MusicGuessQuestion;
-export type ValidateMusicGuessAnswerResponseDto = MusicGuessAnswerValidation;

@@ -34,6 +34,8 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg
+
 ENV NODE_ENV=production
 ENV NODE_PATH=/app/Lammah-game-backend/node_modules:/app/node_modules
 ENV PORT=3000

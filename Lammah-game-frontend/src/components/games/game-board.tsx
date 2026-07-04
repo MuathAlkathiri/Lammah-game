@@ -19,7 +19,7 @@ interface GameBoardProps {
 }
 
 export function GameBoard({ gameId }: GameBoardProps) {
-  const { data: gameResponse, isLoading, error } = useGame(gameId);
+  const { data: game, isLoading, error } = useGame(gameId);
   const [selectedBoardQuestion, setSelectedBoardQuestion] = useState<BoardQuestion | null>(null);
   const [answerRevealed, setAnswerRevealed] = useState(false);
 
@@ -29,7 +29,6 @@ export function GameBoard({ gameId }: GameBoardProps) {
 
   if (isLoading) return <div className="text-center py-8">جاري التحميل...</div>;
   if (error) return <div className="text-center py-8 text-destructive">حدث خطأ</div>;
-  const game = gameResponse?.data;
   if (!game) return <div className="text-center py-8">لم يتم العثور على اللعبة</div>;
 
   const fallbackTeamA: Team = { id: 'team-a', name: 'الفريق أ', members: [], score: 0 };
