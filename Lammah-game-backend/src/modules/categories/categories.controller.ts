@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -9,17 +10,24 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
+  Query,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import {
+  CategoryMultipartBodyDto,
   CreateCategoryDto,
   UpdateCategoryDto,
 } from './dto/create-category.dto';
@@ -29,6 +37,32 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/schemas/user.schema';
 import { categoryExample, ids } from '../../common/swagger/examples';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+
+interface UploadedBannerFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
+const categoryBannerUploadInterceptor = FileInterceptor('banner', {
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_request, file, callback) => {
+    if (!/^image\/(jpe?g|png|webp)$/.test(file.mimetype)) {
+      callback(
+        new BadRequestException('Banner must be a jpg, jpeg, png, or webp image'),
+        false,
+      );
+      return;
+    }
+
+    callback(null, true);
+  },
+});
 
 @ApiTags('Categories')
 @Controller('categories')
@@ -38,19 +72,24 @@ export class CategoriesController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @UseInterceptors(categoryBannerUploadInterceptor)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new category' })
+  @ApiConsumes('application/json', 'multipart/form-data')
   @ApiBody({
-    type: CreateCategoryDto,
+    type: CategoryMultipartBodyDto,
     examples: {
-      default: {
-        summary: 'Create category',
+      multipart: {
+        summary: 'Multipart category with optional banner',
         value: {
-          name: 'Science',
-          slug: 'science',
-          description: 'Science and discovery questions',
-          isActive: true,
+          category: JSON.stringify({
+            name: 'Science',
+            slug: 'science',
+            description: 'Science and discovery questions',
+            catalogId: ids.catalog,
+            isActive: true,
+          }),
         },
       },
     },
@@ -67,12 +106,22 @@ export class CategoriesController {
     },
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async create(@Body() createCategoryDto: CreateCategoryDto): Promise<{
+  async create(
+    @Body() body: Record<string, unknown>,
+    @UploadedFile() banner?: UploadedBannerFile,
+  ): Promise<{
     statusCode: number;
     message: string;
     data: Category;
   }> {
-    const category = await this.categoriesService.create(createCategoryDto);
+    const createCategoryDto = this.parseAndValidateCategoryBody(
+      body,
+      CreateCategoryDto,
+    );
+    const category = await this.categoriesService.create(
+      createCategoryDto,
+      banner,
+    );
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Category created successfully',
@@ -82,6 +131,12 @@ export class CategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all categories' })
+  @ApiQuery({
+    name: 'catalogId',
+    required: false,
+    description: 'Filter categories by catalog ID',
+    example: ids.catalog,
+  })
   @ApiResponse({
     status: 200,
     description: 'Categories retrieved successfully',
@@ -92,11 +147,11 @@ export class CategoriesController {
       },
     },
   })
-  async findAll(): Promise<{
+  async findAll(@Query('catalogId') catalogId?: string): Promise<{
     statusCode: number;
     data: Category[];
   }> {
-    const categories = await this.categoriesService.findAll();
+    const categories = await this.categoriesService.findAll({ catalogId });
     return {
       statusCode: HttpStatus.OK,
       data: categories,
@@ -145,22 +200,27 @@ export class CategoriesController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @UseInterceptors(categoryBannerUploadInterceptor)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a category' })
+  @ApiConsumes('application/json', 'multipart/form-data')
   @ApiParam({
     name: 'id',
     example: ids.category,
     description: 'Category MongoDB ObjectId',
   })
   @ApiBody({
-    type: UpdateCategoryDto,
+    type: CategoryMultipartBodyDto,
     examples: {
-      default: {
-        summary: 'Update category',
+      multipart: {
+        summary: 'Multipart update with optional replacement banner',
         value: {
-          name: 'Science Updated',
-          description: 'Updated science category description',
-          isActive: true,
+          category: JSON.stringify({
+            name: 'Science Updated',
+            description: 'Updated science category description',
+            catalogId: ids.catalog,
+            isActive: true,
+          }),
         },
       },
     },
@@ -183,13 +243,22 @@ export class CategoriesController {
   @ApiResponse({ status: 404, description: 'Category not found' })
   async update(
     @Param('id') id: string,
-    @Body() updateCategoryDto: UpdateCategoryDto,
+    @Body() body: Record<string, unknown>,
+    @UploadedFile() banner?: UploadedBannerFile,
   ): Promise<{
     statusCode: number;
     message: string;
     data: Category;
   }> {
-    const category = await this.categoriesService.update(id, updateCategoryDto);
+    const updateCategoryDto = this.parseAndValidateCategoryBody(
+      body,
+      UpdateCategoryDto,
+    );
+    const category = await this.categoriesService.update(
+      id,
+      updateCategoryDto,
+      banner,
+    );
     return {
       statusCode: HttpStatus.OK,
       message: 'Category updated successfully',
@@ -212,5 +281,41 @@ export class CategoriesController {
   @ApiResponse({ status: 404, description: 'Category not found' })
   async delete(@Param('id') id: string): Promise<void> {
     await this.categoriesService.delete(id);
+  }
+
+  private parseAndValidateCategoryBody<T extends object>(
+    body: Record<string, unknown>,
+    DtoClass: new () => T,
+  ): T {
+    const rawCategory = body.category;
+    let payload: unknown = body;
+
+    if (rawCategory !== undefined) {
+      if (typeof rawCategory !== 'string') {
+        throw new BadRequestException('category must be a JSON string');
+      }
+
+      try {
+        payload = JSON.parse(rawCategory);
+      } catch {
+        throw new BadRequestException('category must be valid JSON');
+      }
+    }
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new BadRequestException('category payload must be an object');
+    }
+
+    const dto = plainToInstance(DtoClass, payload);
+    const validationErrors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+
+    if (validationErrors.length) {
+      throw new BadRequestException(validationErrors);
+    }
+
+    return dto;
   }
 }

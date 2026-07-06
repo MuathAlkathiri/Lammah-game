@@ -89,9 +89,10 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('Lammah Quiz API')
     .setDescription(
-      'Backend API for Lammah, a quiz-party game with categories, questions, and multiplayer game logic',
+      'Backend API for Lammah, an offline competitive party quiz game with catalogs, categories, questions, and local gameplay logic',
     )
     .setVersion('1.0.0')
+    .addTag('Catalogs', 'Catalog management endpoints')
     .addTag('Categories', 'Category management endpoints')
     .addTag('Questions', 'Question management endpoints')
     .addTag('Games', 'Game logic and gameplay endpoints')

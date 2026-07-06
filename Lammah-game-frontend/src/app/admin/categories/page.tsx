@@ -25,7 +25,7 @@ export default function AdminCategoriesPage() {
             <DialogTrigger asChild>
               <Button>إضافة فئة جديدة</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[calc(100dvh-3rem)] overflow-hidden sm:max-w-xl">
               <DialogHeader>
                 <DialogTitle>إضافة فئة جديدة</DialogTitle>
               </DialogHeader>

@@ -1,33 +1,40 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import axios from 'axios';
 import * as z from 'zod';
-import { useRouter } from 'next/navigation';
+import { Pencil } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCreateGame, useCategories } from '@/lib/hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { getMediaUrl } from '@/lib/api/media-url';
 import { getEntityId } from '@/lib/utils';
+import { Category } from '@/types';
 
 const gameSchema = z.object({
   name: z.string().min(1, 'اسم اللعبة مطلوب'),
   teamAName: z.string().min(1, 'اسم الفريق أ مطلوب'),
-  teamAMembers: z.string().min(1, 'أعضاء الفريق أ مطلوبون'),
   teamBName: z.string().min(1, 'اسم الفريق ب مطلوب'),
-  teamBMembers: z.string().min(1, 'أعضاء الفريق ب مطلوبون'),
   categoryIds: z.array(z.string()).length(6, 'يجب اختيار 6 تصنيفات بالضبط'),
 });
 
 type GameFormData = z.infer<typeof gameSchema>;
 
 export function GameForm() {
-  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<GameFormData>({
+  const searchParams = useSearchParams();
+  const initialCategoryIds = (searchParams.get('categories') || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const { register, handleSubmit, formState: { errors }, watch } = useForm<GameFormData>({
     resolver: zodResolver(gameSchema),
     defaultValues: {
-      categoryIds: [],
+      categoryIds: initialCategoryIds,
     },
   });
 
@@ -36,15 +43,10 @@ export function GameForm() {
   const createGame = useCreateGame();
   const selectedCategories = watch('categoryIds') || [];
   const categories = categoriesData || [];
+  const selectedCategoryDetails = selectedCategories
+    .map((categoryId) => categories.find((category) => getEntityId(category) === categoryId))
+    .filter((category): category is Category => Boolean(category));
   const [submitError, setSubmitError] = useState('');
-
-  const handleCategoryToggle = (categoryId: string) => {
-    if (selectedCategories.includes(categoryId)) {
-      setValue('categoryIds', selectedCategories.filter(id => id !== categoryId), { shouldValidate: true });
-    } else {
-      setValue('categoryIds', [...selectedCategories, categoryId], { shouldValidate: true });
-    }
-  };
 
   const onSubmit = async (data: GameFormData) => {
     setSubmitError('');
@@ -54,11 +56,11 @@ export function GameForm() {
         teams: [
           {
             name: data.teamAName,
-            members: data.teamAMembers.split(',').map(m => m.trim()).filter(Boolean),
+            members: [],
           },
           {
             name: data.teamBName,
-            members: data.teamBMembers.split(',').map(m => m.trim()).filter(Boolean),
+            members: [],
           },
         ],
         categoryIds: data.categoryIds,
@@ -86,7 +88,7 @@ export function GameForm() {
         {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="block text-sm font-medium mb-2">اسم الفريق أ</label>
           <Input placeholder="مثال: الفريق الأحمر" {...register('teamAName')} />
@@ -100,58 +102,63 @@ export function GameForm() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">أعضاء الفريق أ (مفصول بفواصل)</label>
-          <Textarea placeholder="أحمد، سارة، محمد" {...register('teamAMembers')} />
-          {errors.teamAMembers && <p className="text-sm text-destructive">{errors.teamAMembers.message}</p>}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2">أعضاء الفريق ب (مفصول بفواصل)</label>
-          <Textarea placeholder="علي، فاطمة، خديجة" {...register('teamBMembers')} />
-          {errors.teamBMembers && <p className="text-sm text-destructive">{errors.teamBMembers.message}</p>}
-        </div>
-      </div>
-
       <div>
-        <label className="block text-sm font-medium mb-3">الفئات</label>
-        <p className="text-sm text-muted-foreground mb-3">
-          اخترت {selectedCategories.length} من 6 تصنيفات
-        </p>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          {categories.map((category) => (
-            <label key={getEntityId(category)} className="cursor-pointer">
-              {(() => {
-                const categoryId = getEntityId(category);
-                const selected = !!categoryId && selectedCategories.includes(categoryId);
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <label className="block text-sm font-medium">الفئات المختارة</label>
+            <p className="mt-1 text-sm text-muted-foreground">
+              اخترت {selectedCategories.length} من 6 فئات
+            </p>
+          </div>
+          <Button asChild type="button" variant="outline" size="sm">
+            <Link href="/#categories">
+              <Pencil className="ml-2 h-4 w-4" aria-hidden="true" />
+              تعديل
+            </Link>
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {selectedCategoryDetails.map((category) => {
+            const bannerUrl = getMediaUrl(category?.banner?.url);
 
-                return (
-                  <div className={`rounded-3xl border p-4 transition-all ${
-                    selected
-                      ? 'border-primary bg-primary/15 text-primary watermelon-glow'
-                      : 'border-white/10 bg-white/[0.06] hover:border-primary/50 hover:bg-white/[0.09]'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => categoryId && handleCategoryToggle(categoryId)}
-                      className="sr-only"
+            return (
+              <div
+                key={getEntityId(category)}
+                className="relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06]"
+              >
+                {bannerUrl ? (
+                  <>
+                    <Image
+                      src={bannerUrl}
+                      alt={category?.name || 'فئة'}
+                      fill
+                      unoptimized
+                      className="object-cover"
                     />
-                    <span className="text-base font-black">{category.name}</span>
-                  </div>
-                );
-              })()}
-            </label>
-          ))}
+                    <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent" />
+                  </>
+                ) : (
+                  <span className="absolute inset-0 bg-gradient-to-br from-white/[0.08] to-primary/[0.06]" />
+                )}
+                <span className="absolute inset-x-0 bottom-0 p-3 text-sm font-black text-white drop-shadow">
+                  {category?.name}
+                </span>
+              </div>
+            );
+          })}
         </div>
         {errors.categoryIds && <p className="text-sm text-destructive">{errors.categoryIds.message}</p>}
+        {selectedCategories.length !== 6 && (
+          <p className="mt-3 text-sm text-destructive">
+            ارجع واختر 6 فئات قبل إنشاء اللعبة.
+          </p>
+        )}
       </div>
 
       {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
       <Button type="submit" disabled={createGame.isPending || selectedCategories.length !== 6}>
-        {createGame.isPending ? 'جاري الإنشاء...' : 'إنشاء لعبة'}
+        {createGame.isPending ? 'جاري الإنشاء...' : 'ابدأ اللعبة'}
       </Button>
     </form>
   );

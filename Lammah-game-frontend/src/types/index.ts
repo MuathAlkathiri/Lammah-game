@@ -29,15 +29,66 @@ export interface RegisterPayload extends LoginPayload {
 }
 
 // Category types
+export interface CategoryBanner {
+  filename: string;
+  path: string;
+  url: string;
+  mimetype: string;
+  size: number;
+}
+
+export interface LocalizedText {
+  ar: string;
+  en: string;
+}
+
+export interface Catalog {
+  id: string;
+  _id?: string;
+  name: LocalizedText;
+  description?: LocalizedText;
+  slug: string;
+  banner?: CategoryBanner;
+  icon?: string;
+  isActive: boolean;
+  sortOrder?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogPayload {
+  name?: Partial<LocalizedText>;
+  description?: Partial<LocalizedText>;
+  slug?: string;
+  icon?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+  bannerFile?: File;
+}
+
 export interface Category {
   id: string;
   _id?: string;
   name: string;
   slug: string;
   description?: string;
+  catalogId?: Catalog | string | null;
+  catalog?: Catalog | null;
+  banner?: CategoryBanner;
   isActive: boolean;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CategoryPayload {
+  name?: string;
+  slug?: string;
+  description?: string;
+  catalogId?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+  bannerFile?: File;
 }
 
 // Question types

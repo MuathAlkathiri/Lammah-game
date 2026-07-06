@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCategories, useDeleteCategory } from "@/lib/hooks";
 import { getEntityId } from "@/lib/utils";
+import { getMediaUrl } from "@/lib/api/media-url";
 
 export function CategoriesList() {
   const router = useRouter();
@@ -28,6 +30,13 @@ export function CategoriesList() {
     <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
       {categories.map((category) => {
         const categoryId = getEntityId(category);
+        const bannerUrl = getMediaUrl(category.banner?.url);
+        const catalogName =
+          category.catalog
+            ? category.catalog.name.ar
+            : typeof category.catalogId === "object" && category.catalogId
+              ? category.catalogId.name.ar
+              : null;
 
         return (
           <Card
@@ -43,6 +52,17 @@ export function CategoriesList() {
               }
             }}
           >
+            {bannerUrl && (
+              <div className="relative h-36 overflow-hidden border-b border-white/10">
+                <Image
+                  src={bannerUrl}
+                  alt={category.name}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
+            )}
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -53,6 +73,11 @@ export function CategoriesList() {
                   <p className="text-xs text-muted-foreground mt-2">
                     {category.slug}
                   </p>
+                  {catalogName && (
+                    <Badge variant="outline" className="mt-3">
+                      {catalogName}
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <Badge variant={category.isActive ? "default" : "secondary"}>

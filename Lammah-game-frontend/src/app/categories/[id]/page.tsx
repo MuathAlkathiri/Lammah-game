@@ -4,10 +4,19 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RequireAdmin } from "@/components/auth/require-admin";
 import { QuestionsList } from "@/components/questions/questions-list";
 import { useCategory } from "@/lib/hooks";
 
 export default function CategoryQuestionsPage() {
+  return (
+    <RequireAdmin>
+      <CategoryQuestionsContent />
+    </RequireAdmin>
+  );
+}
+
+function CategoryQuestionsContent() {
   const params = useParams<{ id: string }>();
   const categoryId = params.id;
   const { data: category, isLoading, error } = useCategory(categoryId);

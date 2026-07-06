@@ -10,31 +10,34 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { RequireAdmin } from '@/components/auth/require-admin';
-import { CategoryForm } from '@/components/categories/category-form';
-import { CategoriesList } from '@/components/categories/categories-list';
+import { CatalogForm } from '@/components/catalogs/catalog-form';
+import { CatalogsList } from '@/components/catalogs/catalogs-list';
 
-export default function CategoriesPage() {
+export default function AdminCatalogsPage() {
   const [open, setOpen] = useState(false);
 
   return (
     <RequireAdmin>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">الفئات</h1>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-black text-primary">Admin only</p>
+            <h1 className="text-3xl font-bold">إدارة الكتالوجات</h1>
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button>إضافة فئة جديدة</Button>
+              <Button>إضافة كتالوج جديد</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>إضافة فئة جديدة</DialogTitle>
+                <DialogTitle>إضافة كتالوج جديد</DialogTitle>
               </DialogHeader>
-              <CategoryForm onSuccess={() => setOpen(false)} />
+              <CatalogForm onSuccess={() => setOpen(false)} />
             </DialogContent>
           </Dialog>
         </div>
 
-        <CategoriesList />
+        <CatalogsList />
       </div>
     </RequireAdmin>
   );

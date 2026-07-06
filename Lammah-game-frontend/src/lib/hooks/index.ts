@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  catalogsApi,
   categoriesApi,
   questionsApi,
   gamesApi,
@@ -10,17 +11,18 @@ import {
   musicTracksApi,
 } from "@/lib/api/endpoints";
 import {
-  Category,
+  CategoryPayload,
+  CatalogPayload,
   Question,
   CreateGamePayload,
   SubscriptionUpdatePayload,
 } from "@/types";
 
 // Categories hooks
-export function useCategories() {
+export function useCategories(params?: { catalogId?: string }) {
   return useQuery({
-    queryKey: ["categories"],
-    queryFn: () => categoriesApi.list(),
+    queryKey: ["categories", params?.catalogId || "all"],
+    queryFn: () => categoriesApi.list(params),
   });
 }
 
@@ -34,7 +36,7 @@ export function useCategory(id: string) {
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Category>) => categoriesApi.create(data),
+    mutationFn: (data: CategoryPayload) => categoriesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
     },
@@ -44,7 +46,7 @@ export function useCreateCategory() {
 export function useUpdateCategory(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Category>) => categoriesApi.update(id, data),
+    mutationFn: (data: CategoryPayload) => categoriesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
       queryClient.invalidateQueries({ queryKey: ["categories", id] });
@@ -58,6 +60,53 @@ export function useDeleteCategory() {
     mutationFn: (id: string) => categoriesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useCatalogs() {
+  return useQuery({
+    queryKey: ["catalogs"],
+    queryFn: () => catalogsApi.list(),
+  });
+}
+
+export function useCatalog(id: string) {
+  return useQuery({
+    queryKey: ["catalogs", id],
+    queryFn: () => catalogsApi.get(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreateCatalog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CatalogPayload) => catalogsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalogs"] });
+    },
+  });
+}
+
+export function useUpdateCatalog(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CatalogPayload) => catalogsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalogs"] });
+      queryClient.invalidateQueries({ queryKey: ["catalogs", id] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useDeleteCatalog() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => catalogsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalogs"] });
     },
   });
 }

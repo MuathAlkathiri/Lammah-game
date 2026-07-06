@@ -2,7 +2,10 @@ import apiClient from "./client";
 import axios from "axios";
 import {
   AuthResponse,
+  Catalog,
+  CatalogPayload,
   Category,
+  CategoryPayload,
   CreateGamePayload,
   Game,
   LoginPayload,
@@ -80,28 +83,119 @@ export const authApi = {
 
 // Categories API
 export const categoriesApi = {
-  list: () =>
+  list: (params?: { catalogId?: string }) =>
     unwrap<Category[]>(
-      apiClient.get<Category[] | ApiListResponse<Category>>("/categories"),
+      apiClient.get<Category[] | ApiListResponse<Category>>("/categories", {
+        params,
+      }),
     ),
   get: (id: string) =>
     unwrap<Category>(
       apiClient.get<Category | ApiResponse<Category>>(`/categories/${id}`),
     ),
-  create: (data: Partial<Category>) =>
-    unwrap<Category>(
-      apiClient.post<Category | ApiResponse<Category>>("/categories", data),
-    ),
-  update: (id: string, data: Partial<Category>) =>
-    unwrap<Category>(
+  create: (data: CategoryPayload) => {
+    const requestData = toCategoryRequestData(data);
+    return unwrap<Category>(
+      apiClient.post<Category | ApiResponse<Category>>(
+        "/categories",
+        requestData.body,
+        requestData.config,
+      ),
+    );
+  },
+  update: (id: string, data: CategoryPayload) => {
+    const requestData = toCategoryRequestData(data);
+    return unwrap<Category>(
       apiClient.patch<Category | ApiResponse<Category>>(
         `/categories/${id}`,
-        data,
+        requestData.body,
+        requestData.config,
       ),
-    ),
+    );
+  },
   delete: (id: string) =>
     unwrap<unknown>(apiClient.delete(`/categories/${id}`)),
 };
+
+export const catalogsApi = {
+  list: () =>
+    unwrap<Catalog[]>(
+      apiClient.get<Catalog[] | ApiListResponse<Catalog>>("/catalogs"),
+    ),
+  get: (id: string) =>
+    unwrap<Catalog>(
+      apiClient.get<Catalog | ApiResponse<Catalog>>(`/catalogs/${id}`),
+    ),
+  create: (data: CatalogPayload) => {
+    const requestData = toCatalogRequestData(data);
+    return unwrap<Catalog>(
+      apiClient.post<Catalog | ApiResponse<Catalog>>(
+        "/catalogs",
+        requestData.body,
+        requestData.config,
+      ),
+    );
+  },
+  update: (id: string, data: CatalogPayload) => {
+    const requestData = toCatalogRequestData(data);
+    return unwrap<Catalog>(
+      apiClient.patch<Catalog | ApiResponse<Catalog>>(
+        `/catalogs/${id}`,
+        requestData.body,
+        requestData.config,
+      ),
+    );
+  },
+  delete: (id: string) => unwrap<unknown>(apiClient.delete(`/catalogs/${id}`)),
+};
+
+function toCategoryRequestData(data: CategoryPayload) {
+  const { bannerFile, ...category } = data;
+
+  if (!bannerFile) {
+    return {
+      body: category,
+      config: undefined,
+    };
+  }
+
+  const formData = new FormData();
+  formData.append("category", JSON.stringify(category));
+  formData.append("banner", bannerFile);
+
+  return {
+    body: formData,
+    config: {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  };
+}
+
+function toCatalogRequestData(data: CatalogPayload) {
+  const { bannerFile, ...catalog } = data;
+
+  if (!bannerFile) {
+    return {
+      body: catalog,
+      config: undefined,
+    };
+  }
+
+  const formData = new FormData();
+  formData.append("catalog", JSON.stringify(catalog));
+  formData.append("banner", bannerFile);
+
+  return {
+    body: formData,
+    config: {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  };
+}
 
 // Questions API
 export const questionsApi = {

@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/users.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { QuestionHistoryModule } from './modules/question-history/question-history.module';
 import { MusicModule } from './modules/music/music.module';
+import { CatalogsModule } from './modules/catalogs/catalogs.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { MusicModule } from './modules/music/music.module';
     DatabaseModule,
     UsersModule,
     AuthModule,
+    CatalogsModule,
     CategoriesModule,
     QuestionsModule,
     QuestionHistoryModule,

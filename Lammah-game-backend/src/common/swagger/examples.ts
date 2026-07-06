@@ -1,6 +1,7 @@
 export const ids = {
   user: '66b8f5f2c9d7a8b1e3f00111',
   admin: '66b8f5f2c9d7a8b1e3f00112',
+  catalog: '66b8f5f2c9d7a8b1e3f00210',
   category: '66b8f5f2c9d7a8b1e3f00222',
   categoryTwo: '66b8f5f2c9d7a8b1e3f00223',
   question: '66b8f5f2c9d7a8b1e3f00333',
@@ -17,12 +18,51 @@ export const userExample = {
   freeGamesUsed: 0,
 };
 
+export const catalogExample = {
+  _id: ids.catalog,
+  name: {
+    ar: 'رياضة',
+    en: 'Sports',
+  },
+  description: {
+    ar: 'أسئلة رياضية متنوعة',
+    en: 'Various sports questions',
+  },
+  slug: 'sports',
+  banner: {
+    filename: 'catalog-banner-1783260000000-a1b2c3d4e5f6.webp',
+    path: 'uploads/catalogs/banners/catalog-banner-1783260000000-a1b2c3d4e5f6.webp',
+    url: '/uploads/catalogs/banners/catalog-banner-1783260000000-a1b2c3d4e5f6.webp',
+    mimetype: 'image/webp',
+    size: 120000,
+  },
+  icon: 'trophy',
+  isActive: true,
+  sortOrder: 1,
+  createdAt: '2026-06-20T15:00:00.000Z',
+  updatedAt: '2026-06-20T15:00:00.000Z',
+};
+
 export const categoryExample = {
   _id: ids.category,
   name: 'Science',
   slug: 'science',
   description: 'Science and discovery questions',
+  catalogId: ids.catalog,
+  catalog: {
+    _id: ids.catalog,
+    name: catalogExample.name,
+    slug: catalogExample.slug,
+  },
+  banner: {
+    filename: 'category-banner-1783260000000-a1b2c3d4e5f6.webp',
+    path: 'uploads/categories/banners/category-banner-1783260000000-a1b2c3d4e5f6.webp',
+    url: '/uploads/categories/banners/category-banner-1783260000000-a1b2c3d4e5f6.webp',
+    mimetype: 'image/webp',
+    size: 120000,
+  },
   isActive: true,
+  sortOrder: 0,
   createdAt: '2026-06-20T15:00:00.000Z',
   updatedAt: '2026-06-20T15:00:00.000Z',
 };
