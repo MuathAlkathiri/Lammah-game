@@ -26,7 +26,7 @@ export class QuestionRepository {
 
   findAll(includeAnswers: boolean) {
     const query = this.model.find().populate('category');
-    if (!includeAnswers) query.select('-answer');
+    if (!includeAnswers) query.select('-answer -correctAnswer');
     return query.exec();
   }
 
@@ -58,7 +58,7 @@ export class QuestionRepository {
 
   findById(id: string, includeAnswer = true) {
     const query = this.model.findById(id).populate('category');
-    if (!includeAnswer) query.select('-answer');
+    if (!includeAnswer) query.select('-answer -correctAnswer');
     return query.exec();
   }
 

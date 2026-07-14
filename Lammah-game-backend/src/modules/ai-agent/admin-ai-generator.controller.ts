@@ -55,11 +55,18 @@ export class AdminAiGeneratorController {
         this.runToolCommand('yt-dlp', ['--version']),
       ]);
 
+    const ffmpegAvailable = this.toolAvailable(ffmpegWhich, ffmpegVersion);
+    const ytDlpAvailable = this.toolAvailable(ytDlpWhich, ytDlpVersion);
+
     return {
-      ffmpegAvailable: !ffmpegWhich.startsWith('Command failed'),
-      ytDlpAvailable: !ytDlpWhich.startsWith('Command failed'),
-      ffmpegVersion: ffmpegVersion.split('\n')[0],
-      ytDlpVersion: ytDlpVersion.split('\n')[0],
+      ffmpegAvailable,
+      ytDlpAvailable,
+      ffmpegVersion: ffmpegAvailable
+        ? ffmpegVersion.split('\n')[0]
+        : 'unavailable',
+      ytDlpVersion: ytDlpAvailable
+        ? ytDlpVersion.split('\n')[0]
+        : 'unavailable',
     };
   }
 
@@ -95,7 +102,7 @@ export class AdminAiGeneratorController {
 
     return {
       statusCode: HttpStatus.CREATED,
-      ...result,
+      ...this.sanitizeResponse(result),
     };
   }
 
@@ -129,5 +136,35 @@ export class AdminAiGeneratorController {
 
       return String(error);
     }
+  }
+
+  private sanitizeResponse(value: unknown): Record<string, unknown> {
+    return this.sanitizeValue(value) as Record<string, unknown>;
+  }
+
+  private toolAvailable(...outputs: string[]): boolean {
+    return outputs.every(
+      (output) =>
+        !/^(Command failed|Error:)/i.test(output) &&
+        !/\b(ENOENT|spawn)\b/i.test(output),
+    );
+  }
+
+  private sanitizeValue(value: unknown): unknown {
+    if (Array.isArray(value))
+      return value.map((item) => this.sanitizeValue(item));
+    if (!value || typeof value !== 'object') return value;
+    const source =
+      'toObject' in value && typeof value.toObject === 'function'
+        ? value.toObject()
+        : (value as Record<string, unknown>);
+    return Object.fromEntries(
+      Object.entries(source)
+        .filter(
+          ([key]) =>
+            key !== '__v' && key !== 'localPath' && !key.startsWith('$'),
+        )
+        .map(([key, item]) => [key, this.sanitizeValue(item)]),
+    );
   }
 }

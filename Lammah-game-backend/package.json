@@ -19,10 +19,16 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:integration": "jest --config test/jest-integration.json --runInBand",
+    "test:media:integration": "jest --config test/jest-media.json --runInBand",
+    "test:fixtures:seed": "ts-node --transpile-only --project tsconfig.test.json -r tsconfig-paths/register test/fixtures/manage-fixtures.ts seed",
+    "test:fixtures:reset": "ts-node --transpile-only --project tsconfig.test.json -r tsconfig-paths/register test/fixtures/manage-fixtures.ts reset",
+    "test:ai:live": "node scripts/run-live-ai-check.mjs"
     ,"api:openapi": "NODE_PATH=./node_modules ts-node -r tsconfig-paths/register scripts/generate-openapi.ts"
     ,"api:validate": "ts-node -r tsconfig-paths/register scripts/validate-openapi.ts"
-    ,"api:check": "OPENAPI_OUTPUT=/tmp/lammah-openapi.json npm run api:openapi && OPENAPI_OUTPUT=/tmp/lammah-openapi.json npm run api:validate && cmp openapi/openapi.json /tmp/lammah-openapi.json"
+    ,"api:offline-check": "node scripts/check-openapi-offline.mjs"
+    ,"api:check": "npm run api:offline-check && npm run api:validate"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

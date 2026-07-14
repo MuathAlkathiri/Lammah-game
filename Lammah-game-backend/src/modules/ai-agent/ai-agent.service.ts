@@ -535,7 +535,7 @@ export class AiAgentService {
     dto: GenerateReviewedQuestionsDto,
   ): Promise<ReviewedGenerationContext> {
     const difficulty = dto.difficulty ?? 'medium';
-    const count = dto.count ?? 10;
+    const count = dto.count ?? AiAgentService.DEFAULT_QUESTION_COUNT;
     const language = dto.language ?? 'ar';
 
     if (dto.categoryId) {

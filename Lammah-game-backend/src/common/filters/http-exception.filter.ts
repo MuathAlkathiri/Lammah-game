@@ -38,7 +38,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
           ? exceptionResponse.code
           : undefined;
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // Unexpected infrastructure errors may contain commands, credentials,
+      // provider output, or local paths. Keep those details server-side.
+      message = 'Internal server error';
     }
 
     response.status(status).json({

@@ -49,3 +49,11 @@ AI generation and media processing remain awaited synchronous operations. No dur
 ## Verification
 
 Run `npm run verify` from the repository root. API generation is not currently a quality gate because no generated client is committed.
+# Test infrastructure boundary
+
+Contract generation uses `scripts/openapi-app.module.ts`, a controller-only Swagger
+reflection graph with no database or external infrastructure. Integration tests use
+the real runtime modules against databases whose names must end in `_test`.
+`docker-compose.test.yml` owns ephemeral Mongo, media, backend, and frontend test
+services and never mounts the development MongoDB volume. Fake AI and asset providers
+are injected at infrastructure boundaries; normal verification performs no live calls.

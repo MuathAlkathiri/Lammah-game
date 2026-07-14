@@ -21,14 +21,26 @@
     "test:frontend": "npm run test --workspace Lammah-game-frontend",
     "test:frontend:watch": "npm run test:watch --workspace Lammah-game-frontend",
     "test:backend": "npm run test --workspace Lammah-game-backend -- --passWithNoTests",
+    "test:backend:integration": "npm run test:integration --workspace Lammah-game-backend",
+    "test:backend:integration:docker": "docker compose -f docker-compose.test.yml run --rm backend-integration",
+    "test:fixtures:seed": "npm run test:fixtures:seed --workspace Lammah-game-backend",
+    "test:fixtures:reset": "npm run test:fixtures:reset --workspace Lammah-game-backend",
+    "test:media:integration": "npm run test:media:integration --workspace Lammah-game-backend",
+    "test:media:integration:docker": "docker compose -f docker-compose.test.yml --profile media run --rm media-integration",
+    "test:ai:live": "npm run test:ai:live --workspace Lammah-game-backend",
+    "test:e2e:install": "npm run test:e2e:install --workspace Lammah-game-frontend",
     "test:e2e": "npm run test:e2e --workspace Lammah-game-frontend",
     "test:e2e:ui": "npm run test:e2e:ui --workspace Lammah-game-frontend",
+    "test:e2e:admin": "npm run test:e2e:admin --workspace Lammah-game-frontend",
+    "test:e2e:game": "npm run test:e2e:game --workspace Lammah-game-frontend",
+    "test:e2e:ai": "npm run test:e2e:ai --workspace Lammah-game-frontend",
     "api:openapi": "npm run api:openapi --workspace Lammah-game-backend",
     "api:validate": "npm run api:validate --workspace Lammah-game-backend",
     "api:check": "npm run api:check --workspace Lammah-game-backend",
     "api:generate": "npm run api:generate --workspace Lammah-game-frontend",
     "api:generate:check": "npm run api:generate:check --workspace Lammah-game-frontend",
     "api:migration:check": "npm run api:migration:check --workspace Lammah-game-frontend",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run api:check && npm run api:generate:check && npm run api:migration:check && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run api:check && npm run api:generate:check && npm run api:migration:check && npm run build",
+    "verify:full": "npm run verify && npm run test:backend:integration:docker && npm run test:media:integration:docker && npm run test:e2e"
   }
 }

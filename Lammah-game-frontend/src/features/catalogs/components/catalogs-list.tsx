@@ -67,7 +67,11 @@ export function CatalogsList() {
           const linkedCategoryCount = getLinkedCategoryCount(catalogId);
 
           return (
-            <Card key={catalogId} className="overflow-hidden">
+            <Card
+              key={catalogId}
+              data-testid="catalog-card"
+              className="overflow-hidden"
+            >
               {bannerUrl && (
                 <div className="relative h-36 overflow-hidden border-b border-white/10">
                   <Image

@@ -283,7 +283,11 @@ export function AIGenerator() {
           <h2 className="mb-4 text-3xl font-black">المسودات المُولدة</h2>
           <div className="grid gap-4 md:grid-cols-2">
             {generatedQuestions.map((question, index) => (
-              <Card key={index} className="overflow-hidden">
+              <Card
+                key={index}
+                data-testid={`ai-draft-${index}`}
+                className="overflow-hidden"
+              >
                 {question.coverImageStatus === "READY" &&
                 question.coverImage?.url ? (
                   <Image
@@ -332,6 +336,7 @@ export function AIGenerator() {
                         <Badge variant="outline">{question.gameMode}</Badge>
                         <Badge variant="secondary">{question.type}</Badge>
                         <Badge
+                          data-testid="primary-asset-status"
                           variant={
                             question.assetStatus === "FAILED"
                               ? "destructive"
@@ -342,6 +347,7 @@ export function AIGenerator() {
                           {question.primaryAssetStatus ?? question.assetStatus}
                         </Badge>
                         <Badge
+                          data-testid="cover-asset-status"
                           variant={
                             question.coverImageStatus === "FAILED"
                               ? "destructive"

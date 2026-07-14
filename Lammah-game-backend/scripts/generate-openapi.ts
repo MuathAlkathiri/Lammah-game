@@ -1,14 +1,14 @@
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../src/app.module';
 import {
   configureApiApplication,
   createOpenApiDocument,
 } from '../src/common/swagger/swagger.config';
 
 async function generate(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const { OpenApiAppModule } = await import('./openapi-app.module');
+  const app = await NestFactory.create(OpenApiAppModule, { logger: false });
   try {
     configureApiApplication(app);
     await app.init();
@@ -23,4 +23,8 @@ async function generate(): Promise<void> {
   }
 }
 
-void generate();
+void generate().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`OpenAPI generation failed: ${message}\n`);
+  process.exitCode = 1;
+});

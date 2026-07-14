@@ -59,6 +59,10 @@ npm run verify
 See [TESTING.md](TESTING.md) for unit, browser, integration-boundary, and fixture
 guidance. Dependencies are managed by the single root `package-lock.json`.
 
+Use `npm run verify` for deterministic offline verification. `npm run verify:full`
+adds Mongo integration, FFmpeg media integration, and Playwright E2E checks after the
+isolated test services and Chromium have been prepared.
+
 Backend:
 
 ```sh

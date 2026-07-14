@@ -156,6 +156,7 @@ export function GameBoard({ gameId }: GameBoardProps) {
     <div className="space-y-8">
       <div className="sticky top-24 z-30 grid grid-cols-2 gap-3 md:gap-5">
         <Card
+          data-testid="team-a-score"
           className={`overflow-hidden ${isTeamATurn ? "border-primary/70 watermelon-glow" : ""}`}
         >
           <CardHeader className="pb-2">
@@ -169,7 +170,10 @@ export function GameBoard({ gameId }: GameBoardProps) {
               {teamA.members.join(", ")}
             </div>
             {isTeamATurn && (
-              <Badge className="mt-4 bg-primary text-primary-foreground">
+              <Badge
+                data-testid="current-turn"
+                className="mt-4 bg-primary text-primary-foreground"
+              >
                 الدور الحالي
               </Badge>
             )}
@@ -177,6 +181,7 @@ export function GameBoard({ gameId }: GameBoardProps) {
         </Card>
 
         <Card
+          data-testid="team-b-score"
           className={`overflow-hidden ${!isTeamATurn ? "border-primary/70 watermelon-glow" : ""}`}
         >
           <CardHeader className="pb-2">
@@ -190,7 +195,10 @@ export function GameBoard({ gameId }: GameBoardProps) {
               {teamB.members.join(", ")}
             </div>
             {!isTeamATurn && (
-              <Badge className="mt-4 bg-primary text-primary-foreground">
+              <Badge
+                data-testid="current-turn"
+                className="mt-4 bg-primary text-primary-foreground"
+              >
                 الدور الحالي
               </Badge>
             )}
@@ -237,6 +245,8 @@ export function GameBoard({ gameId }: GameBoardProps) {
                 </div>
                 {column.map((boardQuestion) => (
                   <button
+                    data-testid={`board-question-${getEntityId(boardQuestion)}`}
+                    aria-label={`${game.categories?.[index]?.name || column[0]?.category?.name || `تصنيف ${index + 1}`} ${boardQuestion.points}`}
                     key={getEntityId(boardQuestion)}
                     onClick={() => {
                       setSelectedBoardQuestion(boardQuestion);

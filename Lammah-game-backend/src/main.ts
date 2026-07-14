@@ -75,8 +75,15 @@ async function bootstrap() {
 
   app.use('/uploads', express.static(uploadsRoot));
 
+  const configuredCorsOrigins = configService
+    .get<string>('CORS_ORIGINS')
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    origin: configuredCorsOrigins?.length
+      ? configuredCorsOrigins
+      : ['http://localhost:3001', 'http://127.0.0.1:3001'],
     credentials: true,
   });
 

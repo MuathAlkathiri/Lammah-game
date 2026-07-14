@@ -309,7 +309,12 @@ export class GamesService {
       return;
     }
 
-    if (game.owner.toString() !== user.id) {
+    const owner = game.owner as unknown;
+    const ownerId =
+      owner && typeof owner === 'object' && '_id' in owner
+        ? String(owner._id)
+        : String(owner);
+    if (ownerId !== user.id) {
       throw new ForbiddenException('You do not have access to this game');
     }
   }

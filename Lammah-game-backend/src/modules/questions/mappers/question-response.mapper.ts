@@ -7,8 +7,10 @@ export class QuestionResponseMapper {
     void _version;
     const primaryAsset = this.safeAsset(safe.primaryAsset);
     const coverImage = this.safeAsset(safe.coverImage);
+    const category = this.safeRelatedDocument(safe.category);
     return {
       ...safe,
+      ...(safe.category !== undefined ? { category } : {}),
       ...(safe.primaryAsset !== undefined ? { primaryAsset } : {}),
       ...(safe.coverImage !== undefined ? { coverImage } : {}),
       _id: String(safe._id ?? ''),
@@ -27,6 +29,14 @@ export class QuestionResponseMapper {
     if (!value || typeof value !== 'object') return value;
     const { localPath: _localPath, ...safe } = value as Record<string, unknown>;
     void _localPath;
+    return safe;
+  }
+
+  private static safeRelatedDocument(value: unknown): unknown {
+    if (!value || typeof value !== 'object') return value;
+    const source = this.toPlainObject(value);
+    const { __v: _version, ...safe } = source;
+    void _version;
     return safe;
   }
 

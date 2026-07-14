@@ -200,6 +200,7 @@ export class GamesController {
   }
 
   @Post(':id/reveal-answer')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     operationId: 'gamesRevealAnswer',
     summary: 'Reveal the correct answer for a question',
@@ -262,6 +263,7 @@ export class GamesController {
   }
 
   @Post(':id/award-points')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     operationId: 'gamesAwardPoints',
     summary: 'Award points to a team for answering correctly',
@@ -353,6 +355,7 @@ export class GamesController {
   }
 
   @Post(':id/skip-question')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     operationId: 'gamesSkipQuestion',
     summary: 'Skip a question without awarding points',

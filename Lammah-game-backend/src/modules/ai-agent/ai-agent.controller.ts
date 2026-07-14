@@ -14,6 +14,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/schemas/user.schema';
 import { ids } from '../../common/swagger/examples';
 import { GenerateQuestionsResponseDto } from './dto/ai-response.dto';
+import { QuestionResponseMapper } from '../questions/mappers/question-response.mapper';
 
 @ApiTags('AI Agent')
 @ApiBearerAuth()
@@ -65,6 +66,7 @@ export class AiAgentController {
     return {
       statusCode: HttpStatus.OK,
       ...result,
+      data: QuestionResponseMapper.toResponseList(result.data),
     };
   }
 }

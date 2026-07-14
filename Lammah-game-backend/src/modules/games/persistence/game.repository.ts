@@ -7,7 +7,7 @@ const hiddenAnswerPopulation = [
   { path: 'owner', select: '-password' },
   { path: 'selectedCategories' },
   { path: 'board.category' },
-  { path: 'board.questions.question', select: '-answer' },
+  { path: 'board.questions.question', select: '-answer -correctAnswer' },
 ];
 
 const revealedAnswerPopulation = [
