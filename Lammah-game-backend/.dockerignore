@@ -4,6 +4,15 @@ build
 .next
 out
 coverage
+test-results
+playwright-report
+blob-report
+tmp
+temp
+test-storage
+test-uploads
+test-media
+*.tsbuildinfo
 
 .env
 .env.local

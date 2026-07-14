@@ -5,6 +5,11 @@
 
 # testing
 /coverage
+/.nyc_output
+/test-results
+/test-storage
+/test-uploads
+/test-media
 
 # production/build outputs
 /dist
@@ -12,6 +17,11 @@
 /.next
 /out
 /uploads
+*.tsbuildinfo
+
+# temporary runtime output
+/tmp
+/temp
 
 # misc
 .DS_Store

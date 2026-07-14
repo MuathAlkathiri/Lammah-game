@@ -8,9 +8,21 @@ dist/
 build/
 .next/
 out/
+*.tsbuildinfo
 
-# Coverage
+# Coverage and test runtime output
 coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+
+# Temporary runtime folders
+tmp/
+temp/
+test-storage/
+test-uploads/
+test-media/
 
 # Environment
 .env
