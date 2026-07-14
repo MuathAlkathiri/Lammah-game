@@ -31,7 +31,7 @@ export interface RegisterPayload extends LoginPayload {
 // Category types
 export interface CategoryBanner {
   filename: string;
-  path: string;
+  path?: string;
   url: string;
   mimetype: string;
   size: number;
@@ -66,6 +66,46 @@ export interface CatalogPayload {
   bannerFile?: File;
 }
 
+export interface CategoryAiConfig {
+  knowledgeFile?: string;
+  temperature?: number;
+  preferredQuestionTypes?: string[];
+  avoidTopics?: string[];
+  extraInstructions?: string;
+}
+
+export type GameplayQuestionType =
+  "text" | "image" | "audio" | "quote" | "emoji" | "timeline";
+export type GameMode =
+  | "trivia"
+  | "identifyCharacter"
+  | "identifyVoice"
+  | "identifyImage"
+  | "completeQuote"
+  | "timeline"
+  | "emojiPuzzle"
+  | "identifySong"
+  | "identifySinger"
+  | "identifyMusicIntro";
+
+export interface CategoryGameplayConfig {
+  gameModes?: Partial<Record<GameMode, number>>;
+  /** Legacy field. Prefer gameModes for new categories. */
+  questionTypes?: Partial<Record<GameplayQuestionType, number>>;
+  supportedAssetTypes?: GameplayQuestionType[];
+  preferredDifficultyMix?: Partial<Record<QuestionDifficulty, number>>;
+  maxAudioDuration?: number;
+  imageRevealAllowed?: boolean;
+  allowMultipleAssets?: boolean;
+  musicConfig?: {
+    allowedRegions?: string[];
+    allowedLanguages?: string[];
+    releaseYearFrom?: number;
+    releaseYearTo?: number;
+    maxPreviewDuration?: number;
+  };
+}
+
 export interface Category {
   id: string;
   _id?: string;
@@ -75,6 +115,8 @@ export interface Category {
   catalogId?: Catalog | string | null;
   catalog?: Catalog | null;
   banner?: CategoryBanner;
+  aiConfig?: CategoryAiConfig;
+  gameplayConfig?: CategoryGameplayConfig;
   isActive: boolean;
   sortOrder?: number;
   createdAt: string;
@@ -88,29 +130,111 @@ export interface CategoryPayload {
   catalogId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
+  aiConfig?: CategoryAiConfig;
+  gameplayConfig?: CategoryGameplayConfig;
   bannerFile?: File;
 }
 
 // Question types
-export type QuestionType = "text" | "image" | "audio" | "video";
+export type QuestionType = "text" | "image" | "audio" | "video" | "gif";
+export type DraftAssetType =
+  "text" | "image" | "audio" | "quote" | "emoji" | "timeline" | "gif";
+export type PrimaryAssetType = "audio" | "image" | "video" | "gif";
+export type AssetStatus = "NOT_REQUIRED" | "PENDING" | "READY" | "FAILED";
 export type QuestionDifficulty = "easy" | "medium" | "hard";
-export type QuestionStatus = "draft" | "approved" | "rejected";
-export type QuestionSource = "manual" | "ai";
+export type QuestionStatus =
+  "draft" | "approved" | "published" | "archived" | "rejected";
+export type QuestionSource = "manual" | "ai" | "imported" | "music";
+
+export interface AssetRequest {
+  type: DraftAssetType;
+  assetType?: DraftAssetType;
+  provider?: string;
+  query?: string;
+  entity?: string;
+  franchise?: string;
+  language?: string;
+  originalName?: string;
+  localizedName?: string;
+  englishTitle?: string;
+  arabicTitle?: string;
+  context?: string;
+  duration?: number;
+  speaker?: string;
+  [key: string]: unknown;
+}
+
+export interface DraftAsset {
+  localPath: string;
+  url: string;
+  duration?: number;
+  source: string;
+  sourceUrl?: string;
+  searchQuery?: string;
+  provider: string;
+  type: DraftAssetType;
+  metadata?: Record<string, unknown>;
+}
+
+export interface QuestionPrimaryAsset {
+  type: PrimaryAssetType;
+  url: string;
+  source: string;
+  sourceUrl?: string;
+  searchQuery?: string;
+  provider?: string;
+  localPath?: string;
+  duration?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface QuestionCoverImage {
+  type: "image";
+  url: string;
+  source: string;
+  sourceUrl?: string;
+  provider?: string;
+  localPath?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export interface Question {
   id: string;
   _id?: string;
   categoryId: string;
+  catalogId?: string | Catalog | null;
   category?: Category | string;
   question: string;
   answer: string;
+  correctAnswer?: string;
+  wrongAnswers?: string[];
   explanation?: string;
   difficulty: QuestionDifficulty;
   points: number; // 200, 400, 600
+  score?: number; // Future name for points
+  gameMode?: GameMode;
   type: QuestionType;
+  primaryAsset?: QuestionPrimaryAsset | null;
+  coverImage?: QuestionCoverImage | null;
+  primaryAssetRequest?: AssetRequest | null;
+  coverImageRequest?: AssetRequest | null;
+  coverImageStatus?: AssetStatus;
+  coverImageFailureReason?: string;
   mediaUrl?: string;
+  mediaKey?: string;
+  assetStatus?: AssetStatus;
+  asset?: DraftAsset | null;
+  assetFailureReason?: string;
+  assetFailureStep?: string;
+  assetFailureDiagnostics?: Record<string, unknown>;
+  qualityScore?: number;
+  issues?: string[];
+  gameplayMetadata?: Record<string, unknown>;
+  aiMetadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   status: QuestionStatus;
   source: QuestionSource;
+  createdBy?: string | User;
   isFreeGameQuestion: boolean;
   createdAt: string;
   updatedAt: string;

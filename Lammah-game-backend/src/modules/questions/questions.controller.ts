@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -18,7 +19,19 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { QuestionsService } from './questions.service';
+import { QueryQuestionsService } from './application/query-questions.service';
+import { MutateQuestionService } from './application/mutate-question.service';
+import { ReviewQuestionService } from './application/review-question.service';
+import { QuestionAssetRetryService } from './application/question-asset-retry.service';
+import { QueryQuestionsDto } from './dto/query-questions.dto';
+import { BulkQuestionActionDto } from './dto/review-question.dto';
+import { QuestionResponseMapper } from './mappers/question-response.mapper';
+import {
+  BulkQuestionActionResponseDto,
+  QuestionDetailResponseDto,
+  QuestionListResponseDto,
+  QuestionMutationResponseDto,
+} from './dto/question-response.dto';
 import {
   CreateQuestionDto,
   UpdateQuestionDto,
@@ -37,14 +50,20 @@ import {
 @ApiTags('Questions')
 @Controller('questions')
 export class QuestionsController {
-  constructor(private readonly questionsService: QuestionsService) {}
+  constructor(
+    private readonly queries: QueryQuestionsService,
+    private readonly mutations: MutateQuestionService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new question' })
+  @ApiOperation({
+    operationId: 'questionsCreate',
+    summary: 'Create a new question',
+  })
   @ApiBody({
     type: CreateQuestionDto,
     examples: {
@@ -68,6 +87,7 @@ export class QuestionsController {
   @ApiResponse({
     status: 201,
     description: 'Question created successfully',
+    type: QuestionMutationResponseDto,
     schema: {
       example: {
         statusCode: 201,
@@ -82,19 +102,20 @@ export class QuestionsController {
     message: string;
     data: Question;
   }> {
-    const question = await this.questionsService.create(createQuestionDto);
+    const question = await this.mutations.create(createQuestionDto);
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Question created successfully',
-      data: question,
+      data: QuestionResponseMapper.toResponse(question) as unknown as Question,
     };
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all questions' })
+  @ApiOperation({ operationId: 'questionsList', summary: 'Get all questions' })
   @ApiResponse({
     status: 200,
     description: 'Questions retrieved successfully. Answers are hidden.',
+    type: QuestionListResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -106,15 +127,20 @@ export class QuestionsController {
     statusCode: number;
     data: Question[];
   }> {
-    const questions = await this.questionsService.findAll();
+    const questions = await this.queries.listPublic();
     return {
       statusCode: HttpStatus.OK,
-      data: questions,
+      data: QuestionResponseMapper.toResponseList(
+        questions,
+      ) as unknown as Question[],
     };
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a specific question by ID' })
+  @ApiOperation({
+    operationId: 'questionsGetById',
+    summary: 'Get a specific question by ID',
+  })
   @ApiParam({
     name: 'id',
     example: ids.question,
@@ -123,6 +149,7 @@ export class QuestionsController {
   @ApiResponse({
     status: 200,
     description: 'Question retrieved successfully. Answer is hidden.',
+    type: QuestionDetailResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -145,10 +172,10 @@ export class QuestionsController {
     statusCode: number;
     data: Question;
   }> {
-    const question = await this.questionsService.findById(id);
+    const question = await this.queries.getPublic(id);
     return {
       statusCode: HttpStatus.OK,
-      data: question,
+      data: QuestionResponseMapper.toResponse(question) as unknown as Question,
     };
   }
 
@@ -156,7 +183,10 @@ export class QuestionsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a question' })
+  @ApiOperation({
+    operationId: 'questionsUpdate',
+    summary: 'Update a question',
+  })
   @ApiParam({
     name: 'id',
     example: ids.question,
@@ -177,6 +207,7 @@ export class QuestionsController {
   @ApiResponse({
     status: 200,
     description: 'Question updated successfully',
+    type: QuestionMutationResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -194,11 +225,11 @@ export class QuestionsController {
     message: string;
     data: Question;
   }> {
-    const question = await this.questionsService.update(id, updateQuestionDto);
+    const question = await this.mutations.update(id, updateQuestionDto);
     return {
       statusCode: HttpStatus.OK,
       message: 'Question updated successfully',
-      data: question,
+      data: QuestionResponseMapper.toResponse(question) as unknown as Question,
     };
   }
 
@@ -207,7 +238,10 @@ export class QuestionsController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a question' })
+  @ApiOperation({
+    operationId: 'questionsDelete',
+    summary: 'Delete a question',
+  })
   @ApiParam({
     name: 'id',
     example: ids.question,
@@ -216,6 +250,133 @@ export class QuestionsController {
   @ApiResponse({ status: 204, description: 'Question deleted successfully' })
   @ApiResponse({ status: 404, description: 'Question not found' })
   async delete(@Param('id') id: string): Promise<void> {
-    await this.questionsService.delete(id);
+    await this.mutations.delete(id);
+  }
+}
+
+@ApiTags('Admin Questions')
+@ApiBearerAuth()
+@Controller('admin/questions')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
+export class AdminQuestionsController {
+  constructor(
+    private readonly queries: QueryQuestionsService,
+    private readonly reviews: ReviewQuestionService,
+    private readonly assetRetry: QuestionAssetRetryService,
+  ) {}
+
+  @Get()
+  @ApiOperation({
+    operationId: 'adminQuestionsList',
+    summary: 'Admin: get all questions including answers',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Questions retrieved successfully with answers.',
+    type: QuestionListResponseDto,
+    schema: {
+      example: {
+        statusCode: 200,
+        data: [questionExample],
+      },
+    },
+  })
+  async findAll(): Promise<{
+    statusCode: number;
+    data: Question[];
+  }> {
+    const questions = await this.queries.listAdmin();
+    return {
+      statusCode: HttpStatus.OK,
+      data: QuestionResponseMapper.toResponseList(
+        questions,
+      ) as unknown as Question[],
+    };
+  }
+
+  @Get('ai-generated/list')
+  @ApiOperation({
+    operationId: 'questionsListAiGenerated',
+    summary: 'List AI-generated questions for review',
+  })
+  @ApiResponse({ status: 200, type: QuestionListResponseDto })
+  async findAiGenerated(@Query() filters: QueryQuestionsDto) {
+    return {
+      statusCode: HttpStatus.OK,
+      data: QuestionResponseMapper.toResponseList(
+        await this.queries.listAiGenerated(filters),
+      ),
+    };
+  }
+
+  @Post('bulk-action')
+  @ApiOperation({
+    operationId: 'questionsBulkAction',
+    summary: 'Apply an admin review action to questions',
+  })
+  @ApiResponse({ status: 201, type: BulkQuestionActionResponseDto })
+  async bulkAction(@Body() body: BulkQuestionActionDto) {
+    return this.reviews.bulkAction(body);
+  }
+
+  @Post(':id/retry-primary-asset')
+  @ApiOperation({
+    operationId: 'questionsRetryPrimaryAsset',
+    summary: 'Retry primary asset resolution',
+  })
+  @ApiResponse({ status: 201, type: QuestionDetailResponseDto })
+  async retryPrimaryAsset(@Param('id') id: string) {
+    return {
+      data: QuestionResponseMapper.toResponse(
+        await this.assetRetry.retry(id, 'primary'),
+      ),
+    };
+  }
+
+  @Post(':id/retry-cover-image')
+  @ApiOperation({
+    operationId: 'questionsRetryCoverImage',
+    summary: 'Retry cover image resolution',
+  })
+  @ApiResponse({ status: 201, type: QuestionDetailResponseDto })
+  async retryCoverImage(@Param('id') id: string) {
+    return {
+      data: QuestionResponseMapper.toResponse(
+        await this.assetRetry.retry(id, 'cover'),
+      ),
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    operationId: 'adminQuestionsGetById',
+    summary: 'Admin: get a specific question including answer',
+  })
+  @ApiParam({
+    name: 'id',
+    example: ids.question,
+    description: 'Question MongoDB ObjectId',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Question retrieved successfully with answer.',
+    type: QuestionDetailResponseDto,
+    schema: {
+      example: {
+        statusCode: 200,
+        data: questionExample,
+      },
+    },
+  })
+  async findById(@Param('id') id: string): Promise<{
+    statusCode: number;
+    data: Question;
+  }> {
+    const question = await this.queries.getAdmin(id);
+    return {
+      statusCode: HttpStatus.OK,
+      data: QuestionResponseMapper.toResponse(question) as unknown as Question,
+    };
   }
 }

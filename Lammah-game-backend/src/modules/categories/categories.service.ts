@@ -1,10 +1,17 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Types } from 'mongoose';
 import { Category, CategoryBanner } from './schemas/category.schema';
-import { CreateCategoryDto, UpdateCategoryDto } from './dto/create-category.dto';
+import {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from './dto/create-category.dto';
 import { CategoryBannerStorageService } from './category-banner-storage.service';
-import { Catalog } from '../catalogs/schemas/catalog.schema';
+import { CatalogRepository } from '../catalogs/persistence/catalog.repository';
+import { CategoryRepository } from './persistence/category.repository';
 
 interface UploadedBannerFile {
   originalname: string;
@@ -16,8 +23,8 @@ interface UploadedBannerFile {
 @Injectable()
 export class CategoriesService {
   constructor(
-    @InjectModel(Category.name) private categoryModel: Model<Category>,
-    @InjectModel(Catalog.name) private catalogModel: Model<Catalog>,
+    private readonly categories: CategoryRepository,
+    private readonly catalogs: CatalogRepository,
     private readonly bannerStorage: CategoryBannerStorageService,
   ) {}
 
@@ -26,19 +33,24 @@ export class CategoriesService {
     bannerFile?: UploadedBannerFile,
   ): Promise<Category> {
     // Check if slug already exists
-    const existingCategory = await this.categoryModel.findOne({
-      slug: createCategoryDto.slug,
-    });
+    const existingCategory = await this.categories.findBySlugExcludingId(
+      createCategoryDto.slug,
+    );
 
     if (existingCategory) {
       throw new ConflictException('Category slug already exists');
     }
 
-    const catalogId = await this.resolveCatalogId(createCategoryDto.catalogId, true);
-    const banner = bannerFile ? await this.bannerStorage.save(bannerFile) : undefined;
+    const catalogId = await this.resolveCatalogId(
+      createCategoryDto.catalogId,
+      true,
+    );
+    const banner = bannerFile
+      ? await this.bannerStorage.save(bannerFile)
+      : undefined;
 
     try {
-      const category = await this.categoryModel.create({
+      const category = await this.categories.create({
         ...createCategoryDto,
         catalogId,
         ...(banner ? { banner } : {}),
@@ -46,36 +58,43 @@ export class CategoriesService {
       return category.save();
     } catch (error) {
       await this.bannerStorage.delete(banner);
-      throw error;
+      this.throwMappedPersistenceError(error);
     }
   }
 
   async findAll(filters: { catalogId?: string } = {}): Promise<Category[]> {
-    const query: Record<string, unknown> = {};
-
     if (filters.catalogId) {
       if (!Types.ObjectId.isValid(filters.catalogId)) {
-        throw new NotFoundException(`Catalog with ID "${filters.catalogId}" not found`);
+        throw new NotFoundException(
+          `Catalog with ID "${filters.catalogId}" not found`,
+        );
       }
-      query.catalogId = filters.catalogId;
     }
-
-    return this.categoryModel
-      .find(query)
-      .sort({ sortOrder: 1, createdAt: 1 })
-      .populate('catalog', '_id name slug')
-      .exec();
+    return this.categories.findAll(filters.catalogId);
   }
 
   async findById(id: string): Promise<Category> {
-    const category = await this.categoryModel
-      .findById(id)
-      .populate('catalog', '_id name slug')
-      .exec();
+    const category = await this.categories.findById(id);
     if (!category) {
       throw new NotFoundException(`Category with ID "${id}" not found`);
     }
     return category;
+  }
+
+  findByIdForGameSelection(id: string): Promise<Category> {
+    return this.findById(id);
+  }
+
+  findByIdForQuestionAuthoring(id: string): Promise<Category> {
+    return this.findById(id);
+  }
+
+  findByIdForGeneration(id: string): Promise<Category> {
+    return this.findById(id);
+  }
+
+  findActiveMusicCategory(configuredSlug: string) {
+    return this.categories.findActiveMusicCategory(configuredSlug);
   }
 
   async update(
@@ -83,7 +102,7 @@ export class CategoriesService {
     updateCategoryDto: UpdateCategoryDto,
     bannerFile?: UploadedBannerFile,
   ): Promise<Category> {
-    const existingCategory = await this.categoryModel.findById(id).exec();
+    const existingCategory = await this.categories.findById(id, false);
 
     if (!existingCategory) {
       throw new NotFoundException(`Category with ID "${id}" not found`);
@@ -91,10 +110,10 @@ export class CategoriesService {
 
     // If slug is being updated, check for uniqueness
     if (updateCategoryDto.slug) {
-      const existingCategory = await this.categoryModel.findOne({
-        slug: updateCategoryDto.slug,
-        _id: { $ne: id },
-      });
+      const existingCategory = await this.categories.findBySlugExcludingId(
+        updateCategoryDto.slug,
+        id,
+      );
 
       if (existingCategory) {
         throw new ConflictException('Category slug already exists');
@@ -105,7 +124,8 @@ export class CategoriesService {
       updateCategoryDto.catalogId !== undefined
         ? await this.resolveCatalogId(updateCategoryDto.catalogId)
         : undefined;
-    const { catalogId: _catalogId, ...categoryPayload } = updateCategoryDto;
+    const categoryPayload = { ...updateCategoryDto };
+    delete categoryPayload.catalogId;
     let nextBanner: CategoryBanner | undefined;
 
     if (bannerFile) {
@@ -113,16 +133,12 @@ export class CategoriesService {
     }
 
     try {
-      const category = await this.categoryModel.findByIdAndUpdate(
-        id,
-        {
-          ...categoryPayload,
-          ...(catalogId !== undefined ? { catalogId } : {}),
-          ...(nextBanner ? { banner: nextBanner } : {}),
-          updatedAt: new Date(),
-        },
-        { new: true, runValidators: true },
-      );
+      const category = await this.categories.updateById(id, {
+        ...categoryPayload,
+        ...(catalogId !== undefined ? { catalogId } : {}),
+        ...(nextBanner ? { banner: nextBanner } : {}),
+        updatedAt: new Date(),
+      });
 
       if (!category) {
         throw new NotFoundException(`Category with ID "${id}" not found`);
@@ -135,12 +151,12 @@ export class CategoriesService {
       return category;
     } catch (error) {
       await this.bannerStorage.delete(nextBanner);
-      throw error;
+      this.throwMappedPersistenceError(error);
     }
   }
 
   async delete(id: string): Promise<void> {
-    const result = await this.categoryModel.findByIdAndDelete(id);
+    const result = await this.categories.deleteById(id);
     if (!result) {
       throw new NotFoundException(`Category with ID "${id}" not found`);
     }
@@ -170,15 +186,27 @@ export class CategoriesService {
       throw new NotFoundException(`Catalog with ID "${catalogId}" not found`);
     }
 
-    const catalog = await this.catalogModel
-      .findById(catalogId)
-      .select('_id')
-      .exec();
+    const catalog = await this.catalogs.findReferenceById(catalogId);
 
     if (!catalog) {
       throw new NotFoundException(`Catalog with ID "${catalogId}" not found`);
     }
 
     return catalog._id as Types.ObjectId;
+  }
+
+  private throwMappedPersistenceError(error: unknown): never {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 11000
+    ) {
+      throw new ConflictException({
+        code: 'DUPLICATE_CATEGORY_SLUG',
+        message: 'Category slug already exists',
+      });
+    }
+    throw error;
   }
 }

@@ -23,4 +23,3 @@ export const QuestionHistorySchema =
   SchemaFactory.createForClass(QuestionHistory);
 
 QuestionHistorySchema.index({ user: 1, question: 1 });
-

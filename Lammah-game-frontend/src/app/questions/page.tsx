@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RequireAdmin } from "@/components/auth/require-admin";
-import { QuestionForm } from "@/components/questions/question-form";
-import { QuestionsList } from "@/components/questions/questions-list";
+import { QuestionForm, QuestionsList } from "@/features/questions";
 
 export default function QuestionsPage() {
   const [open, setOpen] = useState(false);

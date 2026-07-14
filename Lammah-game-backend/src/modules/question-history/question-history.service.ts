@@ -10,7 +10,9 @@ export class QuestionHistoryService {
     private questionHistoryModel: Model<QuestionHistory>,
   ) {}
 
-  async findSeenQuestionIds(userId: string | Types.ObjectId): Promise<Types.ObjectId[]> {
+  async findSeenQuestionIds(
+    userId: string | Types.ObjectId,
+  ): Promise<Types.ObjectId[]> {
     const history = await this.questionHistoryModel
       .find({ user: new Types.ObjectId(userId) })
       .select('question')
@@ -40,4 +42,3 @@ export class QuestionHistoryService {
     );
   }
 }
-

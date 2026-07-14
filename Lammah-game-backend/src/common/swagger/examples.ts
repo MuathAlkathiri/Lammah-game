@@ -83,9 +83,12 @@ export const questionExample = {
   updatedAt: '2026-06-20T15:00:00.000Z',
 };
 
-const { answer: _answer, ...questionWithoutAnswer } = questionExample;
-
-export const publicQuestionExample = questionWithoutAnswer;
+export const publicQuestionExample: Omit<typeof questionExample, 'answer'> =
+  (() => {
+    const copy: Partial<typeof questionExample> = { ...questionExample };
+    delete copy.answer;
+    return copy as Omit<typeof questionExample, 'answer'>;
+  })();
 
 export const gameExample = {
   _id: ids.game,

@@ -10,6 +10,49 @@ export class CategoryBanner {
   size: number;
 }
 
+export class CategoryAiConfig {
+  knowledgeFile?: string;
+  temperature?: number;
+  preferredQuestionTypes?: string[];
+  avoidTopics?: string[];
+  extraInstructions?: string;
+}
+
+export class CategoryGameplayConfig {
+  gameModes?: Partial<
+    Record<
+      | 'trivia'
+      | 'identifyCharacter'
+      | 'identifyVoice'
+      | 'identifyImage'
+      | 'completeQuote'
+      | 'timeline'
+      | 'emojiPuzzle'
+      | 'identifySong'
+      | 'identifySinger'
+      | 'identifyMusicIntro',
+      number
+    >
+  >;
+  questionTypes?: Partial<
+    Record<'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline', number>
+  >;
+  supportedAssetTypes?: Array<
+    'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline'
+  >;
+  preferredDifficultyMix?: Partial<Record<'easy' | 'medium' | 'hard', number>>;
+  maxAudioDuration?: number;
+  imageRevealAllowed?: boolean;
+  allowMultipleAssets?: boolean;
+  musicConfig?: {
+    allowedRegions?: string[];
+    allowedLanguages?: string[];
+    releaseYearFrom?: number;
+    releaseYearTo?: number;
+    maxPreviewDuration?: number;
+  };
+}
+
 @Schema({ timestamps: true })
 export class Category extends Document {
   @Prop({ required: true })
@@ -41,6 +84,63 @@ export class Category extends Document {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({
+    type: {
+      knowledgeFile: { type: String, trim: true },
+      temperature: { type: Number, min: 0, max: 2 },
+      preferredQuestionTypes: { type: [String], default: undefined },
+      avoidTopics: { type: [String], default: undefined },
+      extraInstructions: { type: String, trim: true },
+    },
+    required: false,
+    _id: false,
+  })
+  aiConfig?: CategoryAiConfig;
+
+  @Prop({
+    type: {
+      questionTypes: {
+        text: { type: Number, min: 0, max: 100 },
+        image: { type: Number, min: 0, max: 100 },
+        audio: { type: Number, min: 0, max: 100 },
+        quote: { type: Number, min: 0, max: 100 },
+        emoji: { type: Number, min: 0, max: 100 },
+        timeline: { type: Number, min: 0, max: 100 },
+      },
+      gameModes: {
+        trivia: { type: Number, min: 0, max: 100 },
+        identifyCharacter: { type: Number, min: 0, max: 100 },
+        identifyVoice: { type: Number, min: 0, max: 100 },
+        identifyImage: { type: Number, min: 0, max: 100 },
+        completeQuote: { type: Number, min: 0, max: 100 },
+        timeline: { type: Number, min: 0, max: 100 },
+        emojiPuzzle: { type: Number, min: 0, max: 100 },
+        identifySong: { type: Number, min: 0, max: 100 },
+        identifySinger: { type: Number, min: 0, max: 100 },
+        identifyMusicIntro: { type: Number, min: 0, max: 100 },
+      },
+      supportedAssetTypes: { type: [String], default: undefined },
+      preferredDifficultyMix: {
+        easy: { type: Number, min: 0, max: 100 },
+        medium: { type: Number, min: 0, max: 100 },
+        hard: { type: Number, min: 0, max: 100 },
+      },
+      maxAudioDuration: { type: Number, min: 1, max: 20 },
+      imageRevealAllowed: { type: Boolean },
+      allowMultipleAssets: { type: Boolean },
+      musicConfig: {
+        allowedRegions: { type: [String], default: undefined },
+        allowedLanguages: { type: [String], default: undefined },
+        releaseYearFrom: Number,
+        releaseYearTo: Number,
+        maxPreviewDuration: { type: Number, min: 1, max: 30 },
+      },
+    },
+    required: false,
+    _id: false,
+  })
+  gameplayConfig?: CategoryGameplayConfig;
 
   @Prop({ default: 0 })
   sortOrder: number;

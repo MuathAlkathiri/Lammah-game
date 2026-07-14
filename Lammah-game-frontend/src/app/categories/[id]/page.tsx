@@ -5,8 +5,8 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RequireAdmin } from "@/components/auth/require-admin";
-import { QuestionsList } from "@/components/questions/questions-list";
-import { useCategory } from "@/lib/hooks";
+import { QuestionsList } from "@/features/questions";
+import { useCategory } from "@/features/categories";
 
 export default function CategoryQuestionsPage() {
   return (

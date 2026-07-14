@@ -53,7 +53,11 @@ From the repo root, you can run common workspace commands:
 npm run build
 npm run lint
 npm test
+npm run verify
 ```
+
+See [TESTING.md](TESTING.md) for unit, browser, integration-boundary, and fixture
+guidance. Dependencies are managed by the single root `package-lock.json`.
 
 Backend:
 

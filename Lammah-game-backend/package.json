@@ -14,10 +14,15 @@
     "start:prod": "node dist/main",
     "seed": "ts-node -r tsconfig-paths/register src/seed.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand"
+    ,"api:openapi": "NODE_PATH=./node_modules ts-node -r tsconfig-paths/register scripts/generate-openapi.ts"
+    ,"api:validate": "ts-node -r tsconfig-paths/register scripts/validate-openapi.ts"
+    ,"api:check": "OPENAPI_OUTPUT=/tmp/lammah-openapi.json npm run api:openapi && OPENAPI_OUTPUT=/tmp/lammah-openapi.json npm run api:validate && cmp openapi/openapi.json /tmp/lammah-openapi.json"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -54,6 +59,8 @@
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "eslint": "^8.56.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
     "jest": "^29.7.0",
     "prettier": "^3.1.0",
     "supertest": "^6.3.3",

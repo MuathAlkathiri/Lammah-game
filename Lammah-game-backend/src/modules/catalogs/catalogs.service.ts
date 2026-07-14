@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -8,11 +12,12 @@ import {
 import { Category } from '../categories/schemas/category.schema';
 import { CreateCatalogDto, UpdateCatalogDto } from './dto/catalog.dto';
 import { Catalog, CatalogBanner } from './schemas/catalog.schema';
+import { CatalogRepository } from './persistence/catalog.repository';
 
 @Injectable()
 export class CatalogsService {
   constructor(
-    @InjectModel(Catalog.name) private catalogModel: Model<Catalog>,
+    private readonly catalogs: CatalogRepository,
     @InjectModel(Category.name) private categoryModel: Model<Category>,
     private readonly localImageStorage: LocalImageStorageService,
   ) {}
@@ -29,23 +34,23 @@ export class CatalogsService {
     const banner = bannerFile ? await this.saveBanner(bannerFile) : undefined;
 
     try {
-      return await this.catalogModel.create({
+      return await this.catalogs.create({
         ...createCatalogDto,
         slug,
         ...(banner ? { banner } : {}),
       });
     } catch (error) {
       await this.localImageStorage.delete(banner);
-      throw error;
+      this.throwMappedPersistenceError(error);
     }
   }
 
   async findAll(): Promise<Catalog[]> {
-    return this.catalogModel.find().sort({ sortOrder: 1, createdAt: 1 }).exec();
+    return this.catalogs.findAll();
   }
 
   async findById(id: string): Promise<Catalog> {
-    const catalog = await this.catalogModel.findById(id).exec();
+    const catalog = await this.catalogs.findById(id);
 
     if (!catalog) {
       throw new NotFoundException(`Catalog with ID "${id}" not found`);
@@ -59,13 +64,16 @@ export class CatalogsService {
     updateCatalogDto: UpdateCatalogDto,
     bannerFile?: UploadedImageFile,
   ): Promise<Catalog> {
-    const existingCatalog = await this.catalogModel.findById(id).exec();
+    const existingCatalog = await this.catalogs.findById(id);
 
     if (!existingCatalog) {
       throw new NotFoundException(`Catalog with ID "${id}" not found`);
     }
 
-    const updatePayload: UpdateCatalogDto & { slug?: string; banner?: CatalogBanner } = {
+    const updatePayload: UpdateCatalogDto & {
+      slug?: string;
+      banner?: CatalogBanner;
+    } = {
       ...updateCatalogDto,
     };
 
@@ -85,14 +93,10 @@ export class CatalogsService {
     }
 
     try {
-      const catalog = await this.catalogModel.findByIdAndUpdate(
-        id,
-        {
-          ...updatePayload,
-          updatedAt: new Date(),
-        },
-        { new: true, runValidators: true },
-      );
+      const catalog = await this.catalogs.updateById(id, {
+        ...updatePayload,
+        updatedAt: new Date(),
+      });
 
       if (!catalog) {
         throw new NotFoundException(`Catalog with ID "${id}" not found`);
@@ -105,18 +109,20 @@ export class CatalogsService {
       return catalog;
     } catch (error) {
       await this.localImageStorage.delete(nextBanner);
-      throw error;
+      this.throwMappedPersistenceError(error);
     }
   }
 
   async delete(id: string): Promise<void> {
-    const catalog = await this.catalogModel.findById(id).exec();
+    const catalog = await this.catalogs.findById(id);
 
     if (!catalog) {
       throw new NotFoundException(`Catalog with ID "${id}" not found`);
     }
 
-    const linkedCategory = await this.categoryModel.exists({ catalogId: id }).exec();
+    const linkedCategory = await this.categoryModel
+      .exists({ catalogId: id })
+      .exec();
 
     if (linkedCategory) {
       throw new ConflictException(
@@ -124,7 +130,7 @@ export class CatalogsService {
       );
     }
 
-    await this.catalogModel.findByIdAndDelete(id).exec();
+    await this.catalogs.deleteById(id);
     await this.localImageStorage.delete(catalog.banner);
   }
 
@@ -145,14 +151,32 @@ export class CatalogsService {
     return slug || `catalog-${Date.now()}`;
   }
 
-  private async ensureSlugAvailable(slug: string, excludedId?: string): Promise<void> {
-    const existingCatalog = await this.catalogModel.findOne({
+  private async ensureSlugAvailable(
+    slug: string,
+    excludedId?: string,
+  ): Promise<void> {
+    const existingCatalog = await this.catalogs.findBySlugExcludingId(
       slug,
-      ...(excludedId ? { _id: { $ne: excludedId } } : {}),
-    });
+      excludedId,
+    );
 
     if (existingCatalog) {
       throw new ConflictException('Catalog slug already exists');
     }
+  }
+
+  private throwMappedPersistenceError(error: unknown): never {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 11000
+    ) {
+      throw new ConflictException({
+        code: 'DUPLICATE_CATALOG_SLUG',
+        message: 'Catalog slug already exists',
+      });
+    }
+    throw error;
   }
 }

@@ -19,7 +19,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/schemas/user.schema';
 import { SubscriptionsService } from './subscriptions.service';
-import { UpdateUserSubscriptionDto } from './dto/update-user-subscription.dto';
+import {
+  UpdateUserSubscriptionDto,
+  UpdateUserSubscriptionResponseDto,
+} from './dto/update-user-subscription.dto';
 import { ids, userExample } from '../../common/swagger/examples';
 
 @ApiTags('Subscriptions')
@@ -31,7 +34,10 @@ export class SubscriptionsController {
 
   @Patch('users/:userId')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Manually update a user subscription' })
+  @ApiOperation({
+    operationId: 'usersUpdateSubscription',
+    summary: 'Manually update a user subscription',
+  })
   @ApiParam({
     name: 'userId',
     example: ids.user,
@@ -59,6 +65,7 @@ export class SubscriptionsController {
   @ApiResponse({
     status: 200,
     description: 'Subscription updated successfully',
+    type: UpdateUserSubscriptionResponseDto,
     schema: {
       example: {
         statusCode: 200,

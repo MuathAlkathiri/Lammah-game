@@ -37,8 +37,13 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/schemas/user.schema';
 import { categoryExample, ids } from '../../common/swagger/examples';
-import { plainToInstance } from 'class-transformer';
-import { validateSync } from 'class-validator';
+import { CategoryResponseMapper } from './mappers/category-response.mapper';
+import {
+  CategoryDetailResponseDto,
+  CategoryListResponseDto,
+  CategoryMutationResponseDto,
+} from './dto/category-response.dto';
+import { parseMultipartJsonBody } from '../../common/pipes/multipart-json-body.parser';
 
 interface UploadedBannerFile {
   originalname: string;
@@ -54,7 +59,9 @@ const categoryBannerUploadInterceptor = FileInterceptor('banner', {
   fileFilter: (_request, file, callback) => {
     if (!/^image\/(jpe?g|png|webp)$/.test(file.mimetype)) {
       callback(
-        new BadRequestException('Banner must be a jpg, jpeg, png, or webp image'),
+        new BadRequestException(
+          'Banner must be a jpg, jpeg, png, or webp image',
+        ),
         false,
       );
       return;
@@ -75,8 +82,11 @@ export class CategoriesController {
   @UseInterceptors(categoryBannerUploadInterceptor)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new category' })
-  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({
+    operationId: 'categoriesCreate',
+    summary: 'Create a new category',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiBody({
     type: CategoryMultipartBodyDto,
     examples: {
@@ -97,6 +107,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 201,
     description: 'Category created successfully',
+    type: CategoryMutationResponseDto,
     schema: {
       example: {
         statusCode: 201,
@@ -114,8 +125,9 @@ export class CategoriesController {
     message: string;
     data: Category;
   }> {
-    const createCategoryDto = this.parseAndValidateCategoryBody(
+    const createCategoryDto = parseMultipartJsonBody(
       body,
+      'category',
       CreateCategoryDto,
     );
     const category = await this.categoriesService.create(
@@ -125,12 +137,15 @@ export class CategoriesController {
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Category created successfully',
-      data: category,
+      data: CategoryResponseMapper.toResponse(category) as unknown as Category,
     };
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all categories' })
+  @ApiOperation({
+    operationId: 'categoriesList',
+    summary: 'Get all categories',
+  })
   @ApiQuery({
     name: 'catalogId',
     required: false,
@@ -140,6 +155,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Categories retrieved successfully',
+    type: CategoryListResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -154,12 +170,17 @@ export class CategoriesController {
     const categories = await this.categoriesService.findAll({ catalogId });
     return {
       statusCode: HttpStatus.OK,
-      data: categories,
+      data: CategoryResponseMapper.toResponseList(
+        categories,
+      ) as unknown as Category[],
     };
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a specific category by ID' })
+  @ApiOperation({
+    operationId: 'categoriesGetById',
+    summary: 'Get a specific category by ID',
+  })
   @ApiParam({
     name: 'id',
     example: ids.category,
@@ -168,6 +189,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Category retrieved successfully',
+    type: CategoryDetailResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -193,7 +215,7 @@ export class CategoriesController {
     const category = await this.categoriesService.findById(id);
     return {
       statusCode: HttpStatus.OK,
-      data: category,
+      data: CategoryResponseMapper.toResponse(category) as unknown as Category,
     };
   }
 
@@ -202,8 +224,11 @@ export class CategoriesController {
   @Roles(UserRole.ADMIN)
   @UseInterceptors(categoryBannerUploadInterceptor)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a category' })
-  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({
+    operationId: 'categoriesUpdate',
+    summary: 'Update a category',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiParam({
     name: 'id',
     example: ids.category,
@@ -228,6 +253,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Category updated successfully',
+    type: CategoryMutationResponseDto,
     schema: {
       example: {
         statusCode: 200,
@@ -250,8 +276,9 @@ export class CategoriesController {
     message: string;
     data: Category;
   }> {
-    const updateCategoryDto = this.parseAndValidateCategoryBody(
+    const updateCategoryDto = parseMultipartJsonBody(
       body,
+      'category',
       UpdateCategoryDto,
     );
     const category = await this.categoriesService.update(
@@ -262,7 +289,7 @@ export class CategoriesController {
     return {
       statusCode: HttpStatus.OK,
       message: 'Category updated successfully',
-      data: category,
+      data: CategoryResponseMapper.toResponse(category) as unknown as Category,
     };
   }
 
@@ -271,7 +298,10 @@ export class CategoriesController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a category' })
+  @ApiOperation({
+    operationId: 'categoriesDelete',
+    summary: 'Delete a category',
+  })
   @ApiParam({
     name: 'id',
     example: ids.category,
@@ -281,41 +311,5 @@ export class CategoriesController {
   @ApiResponse({ status: 404, description: 'Category not found' })
   async delete(@Param('id') id: string): Promise<void> {
     await this.categoriesService.delete(id);
-  }
-
-  private parseAndValidateCategoryBody<T extends object>(
-    body: Record<string, unknown>,
-    DtoClass: new () => T,
-  ): T {
-    const rawCategory = body.category;
-    let payload: unknown = body;
-
-    if (rawCategory !== undefined) {
-      if (typeof rawCategory !== 'string') {
-        throw new BadRequestException('category must be a JSON string');
-      }
-
-      try {
-        payload = JSON.parse(rawCategory);
-      } catch {
-        throw new BadRequestException('category must be valid JSON');
-      }
-    }
-
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new BadRequestException('category payload must be an object');
-    }
-
-    const dto = plainToInstance(DtoClass, payload);
-    const validationErrors = validateSync(dto, {
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    });
-
-    if (validationErrors.length) {
-      throw new BadRequestException(validationErrors);
-    }
-
-    return dto;
   }
 }

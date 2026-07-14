@@ -4,17 +4,23 @@ import { Category, CategorySchema } from './schemas/category.schema';
 import { CategoriesService } from './categories.service';
 import { CategoriesController } from './categories.controller';
 import { CategoryBannerStorageService } from './category-banner-storage.service';
-import { Catalog, CatalogSchema } from '../catalogs/schemas/catalog.schema';
 import { LocalImageStorageService } from '../../common/uploads/local-image-storage.service';
+import { CatalogsModule } from '../catalogs/catalogs.module';
+import { CategoryRepository } from './persistence/category.repository';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Category.name, schema: CategorySchema },
-      { name: Catalog.name, schema: CatalogSchema },
     ]),
+    CatalogsModule,
   ],
-  providers: [CategoriesService, CategoryBannerStorageService, LocalImageStorageService],
+  providers: [
+    CategoryRepository,
+    CategoriesService,
+    CategoryBannerStorageService,
+    LocalImageStorageService,
+  ],
   controllers: [CategoriesController],
   exports: [CategoriesService],
 })

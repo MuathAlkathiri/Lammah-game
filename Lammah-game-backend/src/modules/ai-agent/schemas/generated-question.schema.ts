@@ -18,11 +18,15 @@ export const GeneratedQuestionSchema = z.object({
     .min(5, 'Explanation is too short')
     .max(500, 'Explanation is too long'),
   difficulty: DifficultySchema,
-  points: z.enum(['200', '400', '600']).or(z.number().refine(n => [200, 400, 600].includes(n))),
+  points: z
+    .enum(['200', '400', '600'])
+    .or(z.number().refine((n) => [200, 400, 600].includes(n))),
   type: QuestionSourceSchema.default('text').optional(),
 });
 
 export const GeneratedQuestionsArraySchema = z.array(GeneratedQuestionSchema);
 
 export type GeneratedQuestion = z.infer<typeof GeneratedQuestionSchema>;
-export type GeneratedQuestionsArray = z.infer<typeof GeneratedQuestionsArraySchema>;
+export type GeneratedQuestionsArray = z.infer<
+  typeof GeneratedQuestionsArraySchema
+>;

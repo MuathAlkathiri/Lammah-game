@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -16,14 +16,19 @@ import {
   Users,
   WifiOff,
   Zap,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/components/auth/auth-provider';
-import { useCatalogs, useCategories, useGames } from '@/lib/hooks';
-import { getMediaUrl } from '@/lib/api/media-url';
-import { formatDate, getEntityId } from '@/lib/utils';
-import { groupCategoriesByCatalog, CatalogCategoryGroup } from '@/lib/categories/catalog-groups';
-import { Category, Game } from '@/types';
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/auth/auth-provider";
+import { useCatalogs } from "@/features/catalogs";
+import { useCategories } from "@/features/categories";
+import { useGames } from "@/features/games";
+import { getMediaUrl } from "@/lib/api/media-url";
+import { formatDate, getEntityId } from "@/lib/utils";
+import {
+  groupCategoriesByCatalog,
+  CatalogCategoryGroup,
+} from "@/lib/categories/catalog-groups";
+import { Category, Game } from "@/types";
 
 type UserActionCardProps = {
   title: string;
@@ -32,9 +37,12 @@ type UserActionCardProps = {
   icon: typeof Gamepad2;
 };
 
-function WatermelonOutline({ className = '' }: { className?: string }) {
+function WatermelonOutline({ className = "" }: { className?: string }) {
   return (
-    <div className={`pointer-events-none absolute opacity-[0.055] ${className}`} aria-hidden="true">
+    <div
+      className={`pointer-events-none absolute opacity-[0.055] ${className}`}
+      aria-hidden="true"
+    >
       <div className="h-28 w-40 rounded-b-full border border-white/70 border-t-0" />
       <div className="absolute left-7 top-7 h-1.5 w-1.5 rounded-full bg-white/70" />
       <div className="absolute left-16 top-12 h-1.5 w-1.5 rounded-full bg-white/70" />
@@ -43,7 +51,12 @@ function WatermelonOutline({ className = '' }: { className?: string }) {
   );
 }
 
-function UserActionCard({ title, description, href, icon: Icon }: UserActionCardProps) {
+function UserActionCard({
+  title,
+  description,
+  href,
+  icon: Icon,
+}: UserActionCardProps) {
   return (
     <Link
       href={href}
@@ -54,28 +67,35 @@ function UserActionCard({ title, description, href, icon: Icon }: UserActionCard
           <Icon className="h-6 w-6" aria-hidden="true" />
         </div>
         <h3 className="mt-5 text-xl font-black leading-tight">{title}</h3>
-        <p className="mt-2 max-w-48 text-sm leading-6 text-zinc-400">{description}</p>
-        <ArrowLeft className="mt-auto h-5 w-5 self-start text-zinc-300 transition group-hover:-translate-x-1 group-hover:text-primary" aria-hidden="true" />
+        <p className="mt-2 max-w-48 text-sm leading-6 text-zinc-400">
+          {description}
+        </p>
+        <ArrowLeft
+          className="mt-auto h-5 w-5 self-start text-zinc-300 transition group-hover:-translate-x-1 group-hover:text-primary"
+          aria-hidden="true"
+        />
       </div>
     </Link>
   );
 }
 
 function getGameProgress(game: Game, index: number) {
-  if (game.status === 'finished') return 100;
-  if (game.status === 'in_progress') return 55 + ((index * 13) % 30);
+  if (game.status === "finished") return 100;
+  if (game.status === "in_progress") return 55 + ((index * 13) % 30);
   return 24 + ((index * 11) % 22);
 }
 
 function GameCover({ game, index }: { game: Game; index: number }) {
   const styles = [
-    'from-emerald-400/80 via-green-600/70 to-[#1f6f4f]',
-    'from-sky-400/75 via-indigo-500/60 to-[#26194f]',
-    'from-violet-400/70 via-fuchsia-500/45 to-[#26163e]',
+    "from-emerald-400/80 via-green-600/70 to-[#1f6f4f]",
+    "from-sky-400/75 via-indigo-500/60 to-[#26194f]",
+    "from-violet-400/70 via-fuchsia-500/45 to-[#26163e]",
   ];
 
   return (
-    <div className={`relative h-28 w-full overflow-hidden rounded-2xl bg-gradient-to-br ${styles[index % styles.length]} sm:h-32 sm:w-32`}>
+    <div
+      className={`relative h-28 w-full overflow-hidden rounded-2xl bg-gradient-to-br ${styles[index % styles.length]} sm:h-32 sm:w-32`}
+    >
       <div className="absolute inset-x-4 bottom-4 h-10 rounded-[50%] bg-black/16 blur-sm" />
       <div className="absolute bottom-5 right-5 h-12 w-16 rotate-[-18deg] rounded-xl border border-white/35 bg-white/12" />
       <div className="absolute bottom-7 right-10 h-12 w-16 rotate-[10deg] rounded-xl border border-white/45 bg-white/18" />
@@ -108,12 +128,22 @@ function ContinuePlayingCard({ game, index }: { game: Game; index: number }) {
 
         <div className="mt-5 flex items-center gap-4">
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.07]">
-            <div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${progress}%` }} />
+            <div
+              className="h-full rounded-full bg-[#22C55E]"
+              style={{ width: `${progress}%` }}
+            />
           </div>
-          <span className="w-10 text-left text-sm font-bold text-zinc-300">{progress}%</span>
+          <span className="w-10 text-left text-sm font-bold text-zinc-300">
+            {progress}%
+          </span>
         </div>
 
-        <Button asChild variant="outline" size="sm" className="mt-4 min-w-44 border-[#22C55E]/35 text-[#22C55E] hover:bg-[#22C55E]/10">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="mt-4 min-w-44 border-[#22C55E]/35 text-[#22C55E] hover:bg-[#22C55E]/10"
+        >
           <Link href={`/games/${getEntityId(game)}`}>
             <Play className="ml-2 h-4 w-4" aria-hidden="true" />
             أكمل اللعب
@@ -145,8 +175,8 @@ function CategoryTile({
       onClick={() => onToggle(categoryId)}
       className={`group relative aspect-square min-w-36 overflow-hidden rounded-[1.35rem] border bg-[#22173f]/80 text-right shadow-[0_12px_32px_rgba(0,0,0,0.16)] transition duration-300 hover:-translate-y-1 disabled:cursor-not-allowed disabled:opacity-55 ${
         selected
-          ? 'border-[#22C55E] ring-2 ring-[#22C55E]/40'
-          : 'border-white/[0.09] hover:border-[#22C55E]/45'
+          ? "border-[#22C55E] ring-2 ring-[#22C55E]/40"
+          : "border-white/[0.09] hover:border-[#22C55E]/45"
       }`}
     >
       {bannerUrl ? (
@@ -231,19 +261,26 @@ export function UserDashboard() {
   const { data: games } = useGames();
   const { data: categories } = useCategories();
   const { data: catalogs } = useCatalogs();
-  const userName = user?.fullName?.split(' ')[0] || 'لاعب';
+  const userName = user?.fullName?.split(" ")[0] || "لاعب";
   const continueGames = (games || []).slice(0, 2);
-  const categoryGroups = groupCategoriesByCatalog(categories || [], catalogs || []);
+  const categoryGroups = groupCategoriesByCatalog(
+    categories || [],
+    catalogs || [],
+  );
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const selectedCategories = useMemo(
     () =>
       selectedCategoryIds
-        .map((categoryId) => (categories || []).find((category) => getEntityId(category) === categoryId))
+        .map((categoryId) =>
+          (categories || []).find(
+            (category) => getEntityId(category) === categoryId,
+          ),
+        )
         .filter((category): category is Category => Boolean(category)),
     [categories, selectedCategoryIds],
   );
-  const newGameHref = isAuthenticated ? '/#categories' : '/login';
-  const gamesHref = isAuthenticated ? '/games' : '/login';
+  const newGameHref = isAuthenticated ? "/#categories" : "/login";
+  const gamesHref = isAuthenticated ? "/games" : "/login";
   const canStartGame = selectedCategoryIds.length === 6;
 
   const handleToggleCategory = (categoryId: string) => {
@@ -262,13 +299,13 @@ export function UserDashboard() {
 
   const handleStartGame = () => {
     if (!isAuthenticated) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
     if (!canStartGame) return;
 
-    router.push(`/games/new?categories=${selectedCategoryIds.join(',')}`);
+    router.push(`/games/new?categories=${selectedCategoryIds.join(",")}`);
   };
 
   return (
@@ -286,20 +323,33 @@ export function UserDashboard() {
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-white/[0.08] bg-white/[0.06] text-2xl shadow-[0_12px_36px_rgba(0,0,0,0.18)]">
             🍉
           </div>
-          <h1 className="mt-6 text-4xl font-black leading-tight md:text-6xl">أهلًا {userName} 👋</h1>
-          <p className="mt-3 text-xl font-bold text-zinc-300 md:text-2xl">جاهز لتحدي جديد؟</p>
+          <h1 className="mt-6 text-4xl font-black leading-tight md:text-6xl">
+            أهلًا {userName} 👋
+          </h1>
+          <p className="mt-3 text-xl font-bold text-zinc-300 md:text-2xl">
+            جاهز لتحدي جديد؟
+          </p>
           <p className="mx-auto mt-2 max-w-2xl text-base leading-7 text-zinc-400 md:text-lg">
             اختر لعبتك المفضلة وابدأ التحدي مع أصدقائك.
           </p>
 
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button asChild size="lg" className="min-w-56 rounded-2xl bg-[#22C55E] text-[#111827] shadow-none hover:bg-[#22C55E]/90">
+            <Button
+              asChild
+              size="lg"
+              className="min-w-56 rounded-2xl bg-[#22C55E] text-[#111827] shadow-none hover:bg-[#22C55E]/90"
+            >
               <Link href={newGameHref}>
                 <Gamepad2 className="ml-2 h-5 w-5" aria-hidden="true" />
                 ابدأ لعبة جديدة
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="min-w-52 rounded-2xl border-white/[0.16] bg-transparent shadow-none hover:bg-white/[0.06]">
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="min-w-52 rounded-2xl border-white/[0.16] bg-transparent shadow-none hover:bg-white/[0.06]"
+            >
               <Link href={gamesHref}>
                 <FolderOpen className="ml-2 h-5 w-5" aria-hidden="true" />
                 ألعابي
@@ -309,15 +359,18 @@ export function UserDashboard() {
 
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             {[
-              { label: 'سريعة وممتعة', icon: Zap },
-              { label: 'مناسبة للجلسات', icon: Users },
-              { label: 'بدون إنترنت', icon: WifiOff },
+              { label: "سريعة وممتعة", icon: Zap },
+              { label: "مناسبة للجلسات", icon: Users },
+              { label: "بدون إنترنت", icon: WifiOff },
             ].map(({ label, icon: Icon }) => (
               <span
                 key={label}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.055] px-4 py-2 text-sm font-medium text-zinc-300"
               >
-                <Icon className="h-4 w-4 text-[#22C55E]/90" aria-hidden="true" />
+                <Icon
+                  className="h-4 w-4 text-[#22C55E]/90"
+                  aria-hidden="true"
+                />
                 {label}
               </span>
             ))}
@@ -361,11 +414,14 @@ export function UserDashboard() {
           <section id="categories" className="scroll-mt-28">
             <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-sm font-black text-[#22C55E]">تصفح حسب الكتالوج</p>
+                <p className="text-sm font-black text-[#22C55E]">
+                  تصفح حسب الكتالوج
+                </p>
                 <h2 className="mt-1 text-3xl font-black">كل الفئات</h2>
               </div>
               <p className="max-w-md text-sm leading-6 text-zinc-400">
-                اختر من الفئات المتاحة، مرتبة تحت كتالوجات تساعدك تلقى نوع التحدي المناسب.
+                اختر من الفئات المتاحة، مرتبة تحت كتالوجات تساعدك تلقى نوع
+                التحدي المناسب.
               </p>
             </div>
             <div className="space-y-5">
@@ -389,7 +445,11 @@ export function UserDashboard() {
             </div>
             <div className="grid gap-5 xl:grid-cols-2">
               {continueGames.map((game, index) => (
-                <ContinuePlayingCard key={getEntityId(game)} game={game} index={index} />
+                <ContinuePlayingCard
+                  key={getEntityId(game)}
+                  game={game}
+                  index={index}
+                />
               ))}
             </div>
           </section>
@@ -415,7 +475,9 @@ export function UserDashboard() {
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs text-zinc-400">اختر الفئات من الكتالوجات بالأعلى.</span>
+                  <span className="text-xs text-zinc-400">
+                    اختر الفئات من الكتالوجات بالأعلى.
+                  </span>
                 )}
               </div>
             </div>

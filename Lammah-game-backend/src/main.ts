@@ -1,11 +1,15 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { INestApplication } from '@nestjs/common';
 import express from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import {
+  configureApiApplication,
+  createOpenApiDocument,
+} from './common/swagger/swagger.config';
 
 const DEFAULT_PORT = 3000;
 const MAX_PORT_FALLBACK_ATTEMPTS = 10;
@@ -76,32 +80,11 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  configureApiApplication(app);
 
-  // Swagger configuration
-  const config = new DocumentBuilder()
-    .setTitle('Lammah Quiz API')
-    .setDescription(
-      'Backend API for Lammah, an offline competitive party quiz game with catalogs, categories, questions, and local gameplay logic',
-    )
-    .setVersion('1.0.0')
-    .addTag('Catalogs', 'Catalog management endpoints')
-    .addTag('Categories', 'Category management endpoints')
-    .addTag('Questions', 'Question management endpoints')
-    .addTag('Games', 'Game logic and gameplay endpoints')
-    .addTag('AI Agent', 'AI question generation endpoints')
-    .addBearerAuth()
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  if (configService.get<string>('SWAGGER_ENABLED') !== 'false') {
+    SwaggerModule.setup('api', app, createOpenApiDocument(app));
+  }
 
   const port = await listen(app, getPort());
   console.log(`Application is running on: http://localhost:${port}`);

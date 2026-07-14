@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { RequireAuth } from '@/components/auth/require-auth';
-import { useAuth } from '@/components/auth/auth-provider';
-import { GamesList } from '@/components/games/games-list';
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { RequireAuth } from "@/components/auth/require-auth";
+import { useAuth } from "@/components/auth/auth-provider";
+import { GamesList } from "@/features/games";
 
 export default function GamesPage() {
   const { user } = useAuth();
   const canUseFreeGame = (user?.freeGamesUsed || 0) === 0;
-  const hasActiveSubscription = user?.subscriptionStatus === 'active';
+  const hasActiveSubscription = user?.subscriptionStatus === "active";
 
   return (
     <RequireAuth>
@@ -31,9 +31,11 @@ export default function GamesPage() {
               الألعاب المجانية المستخدمة: {user?.freeGamesUsed ?? 0}
             </p>
             <p className="text-sm text-muted-foreground">
-              حالة الاشتراك: {user?.subscriptionStatus || 'none'}
+              حالة الاشتراك: {user?.subscriptionStatus || "none"}
             </p>
-            {canUseFreeGame && <p className="text-primary">عندك لعبة مجانية واحدة</p>}
+            {canUseFreeGame && (
+              <p className="text-primary">عندك لعبة مجانية واحدة</p>
+            )}
             {!canUseFreeGame && !hasActiveSubscription && (
               <p className="text-destructive">تحتاج اشتراك لإنشاء لعبة جديدة</p>
             )}

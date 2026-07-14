@@ -1,7 +1,10 @@
-import * as bcrypt from 'bcrypt';
+import { PasswordHasherService } from './modules/auth/infrastructure/password-hasher.service';
 import * as dotenv from 'dotenv';
 import mongoose, { Model, Types } from 'mongoose';
-import { Category, CategorySchema } from './modules/categories/schemas/category.schema';
+import {
+  Category,
+  CategorySchema,
+} from './modules/categories/schemas/category.schema';
 import {
   DifficultyLevel,
   Question,
@@ -26,7 +29,8 @@ const categorySeeds = [
   {
     name: 'General Knowledge',
     slug: 'general-knowledge',
-    description: 'Mixed questions across science, geography, history, and culture.',
+    description:
+      'Mixed questions across science, geography, history, and culture.',
   },
   {
     name: 'Sports',
@@ -36,7 +40,8 @@ const categorySeeds = [
   {
     name: 'Movies',
     slug: 'movies',
-    description: 'Cinema questions covering classics, blockbusters, and awards.',
+    description:
+      'Cinema questions covering classics, blockbusters, and awards.',
   },
   {
     name: 'Music',
@@ -46,7 +51,8 @@ const categorySeeds = [
   {
     name: 'Technology',
     slug: 'technology',
-    description: 'Questions about software, hardware, the web, and modern tech.',
+    description:
+      'Questions about software, hardware, the web, and modern tech.',
   },
 ];
 
@@ -64,14 +70,16 @@ const questionSeeds: Record<
     {
       question: 'What is the capital city of Japan?',
       answer: 'Tokyo',
-      explanation: 'Tokyo is the capital and largest metropolitan area of Japan.',
+      explanation:
+        'Tokyo is the capital and largest metropolitan area of Japan.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
     {
       question: 'Which planet is known as the Red Planet?',
       answer: 'Mars',
-      explanation: 'Iron oxide on the Martian surface gives Mars its reddish color.',
+      explanation:
+        'Iron oxide on the Martian surface gives Mars its reddish color.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
@@ -85,7 +93,8 @@ const questionSeeds: Record<
   ],
   sports: [
     {
-      question: 'How many players are on the field for one football team in soccer?',
+      question:
+        'How many players are on the field for one football team in soccer?',
       answer: '11',
       explanation: 'A soccer team fields 11 players, including the goalkeeper.',
       difficulty: DifficultyLevel.EASY,
@@ -94,7 +103,8 @@ const questionSeeds: Record<
     {
       question: 'Which country hosted the 2016 Summer Olympics?',
       answer: 'Brazil',
-      explanation: 'The 2016 Summer Olympics were held in Rio de Janeiro, Brazil.',
+      explanation:
+        'The 2016 Summer Olympics were held in Rio de Janeiro, Brazil.',
       difficulty: DifficultyLevel.MEDIUM,
       points: QuestionPoints.MEDIUM,
     },
@@ -117,14 +127,17 @@ const questionSeeds: Record<
     {
       question: 'Which film features the quote "May the Force be with you"?',
       answer: 'Star Wars',
-      explanation: 'The quote is one of the most recognizable lines from Star Wars.',
+      explanation:
+        'The quote is one of the most recognizable lines from Star Wars.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
     {
-      question: 'What is the name of the fictional African nation in Black Panther?',
+      question:
+        'What is the name of the fictional African nation in Black Panther?',
       answer: 'Wakanda',
-      explanation: 'Wakanda is the technologically advanced nation ruled by Black Panther.',
+      explanation:
+        'Wakanda is the technologically advanced nation ruled by Black Panther.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
@@ -147,7 +160,8 @@ const questionSeeds: Record<
     {
       question: 'Who is often called the King of Pop?',
       answer: 'Michael Jackson',
-      explanation: 'Michael Jackson is widely known by the nickname King of Pop.',
+      explanation:
+        'Michael Jackson is widely known by the nickname King of Pop.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
@@ -156,14 +170,16 @@ const questionSeeds: Record<
     {
       question: 'What does HTML stand for?',
       answer: 'HyperText Markup Language',
-      explanation: 'HTML is the standard markup language used to structure web pages.',
+      explanation:
+        'HTML is the standard markup language used to structure web pages.',
       difficulty: DifficultyLevel.EASY,
       points: QuestionPoints.LOW,
     },
     {
       question: 'Which company created the JavaScript runtime Node.js?',
       answer: 'Joyent',
-      explanation: 'Node.js was created by Ryan Dahl and initially sponsored by Joyent.',
+      explanation:
+        'Node.js was created by Ryan Dahl and initially sponsored by Joyent.',
       difficulty: DifficultyLevel.HARD,
       points: QuestionPoints.HIGH,
     },
@@ -178,43 +194,38 @@ const questionSeeds: Record<
 };
 
 async function seedAdmin(userModel: Model<User>): Promise<void> {
-  const email = (process.env.ADMIN_EMAIL ?? 'admin@lammah.local')
-    .toLowerCase()
-    .trim();
-  const password = process.env.ADMIN_PASSWORD ?? 'Admin123!';
+  const configuredEmail = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!configuredEmail || !password) {
+    console.log(
+      'Admin seed skipped: ADMIN_EMAIL and ADMIN_PASSWORD are required',
+    );
+    return;
+  }
+  const email = configuredEmail.toLowerCase().trim();
   const fullName = process.env.ADMIN_FULL_NAME ?? 'Lammah Admin';
 
-  const existingAdmin = await userModel.findOne({ email }).select('+password').exec();
+  const existingAdmin = await userModel
+    .findOne({ email })
+    .select('+password')
+    .exec();
 
   if (existingAdmin) {
-    await userModel.updateOne(
-      { email },
-      {
-        $set: {
-          fullName,
-          role: UserRole.ADMIN,
-          updatedAt: new Date(),
-        },
-        $setOnInsert: {
-          freeGamesUsed: 0,
-          subscriptionStatus: SubscriptionStatus.NONE,
-        },
-      },
-    );
-    console.log(`Admin user already exists: ${email}`);
+    console.log('Admin user already exists');
     return;
   }
 
+  const passwordHasher = new PasswordHasherService();
   await userModel.create({
     fullName,
     email,
-    password: await bcrypt.hash(password, 10),
+    password: await passwordHasher.hash(password),
     role: UserRole.ADMIN,
     freeGamesUsed: 0,
     subscriptionStatus: SubscriptionStatus.NONE,
   });
 
-  console.log(`Created admin user: ${email}`);
+  console.log('Created administrator user');
 }
 
 async function seedCategories(

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { GameBoard } from '@/components/games/game-board';
-import { RequireAuth } from '@/components/auth/require-auth';
-import { useParams } from 'next/navigation';
+import { GameBoard } from "@/features/games";
+import { RequireAuth } from "@/components/auth/require-auth";
+import { useParams } from "next/navigation";
 
 export default function GamePage() {
   const params = useParams();
@@ -11,7 +11,7 @@ export default function GamePage() {
   if (!id) {
     return <div className="text-center py-8">لم يتم العثور على اللعبة</div>;
   }
-  
+
   return (
     <RequireAuth>
       <div className="space-y-6">

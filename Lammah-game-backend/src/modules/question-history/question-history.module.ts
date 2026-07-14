@@ -16,4 +16,3 @@ import { QuestionHistoryService } from './question-history.service';
   exports: [QuestionHistoryService],
 })
 export class QuestionHistoryModule {}
-

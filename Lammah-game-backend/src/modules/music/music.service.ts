@@ -2,17 +2,20 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { execFile } from 'child_process';
-import { randomUUID } from 'crypto';
-import { mkdir, rm, unlink, writeFile } from 'fs/promises';
-import { Model, Types } from 'mongoose';
-import { extname, join } from 'path';
-import { promisify } from 'util';
-import { Category } from '../categories/schemas/category.schema';
+import { Types } from 'mongoose';
+import {
+  LocalAudioStorageService,
+  StoredLocalAudio,
+  UploadedAudioFile,
+} from '../../common/uploads/local-audio-storage.service';
+import { AudioProcessorService } from '../../infrastructure/media/audio-processor.service';
+import { MediaInspectorService } from '../../infrastructure/media/media-inspector.service';
+import { CategoriesService } from '../categories/categories.service';
+import { QuestionRepository } from '../questions/persistence/question.repository';
 import {
   DifficultyLevel,
   Question,
@@ -22,17 +25,12 @@ import {
   QuestionType,
 } from '../questions/schemas/question.schema';
 import { UploadMusicTrackDto, UpdateMusicTrackDto } from './dto/music.dto';
+import { mapMusicTrackResponse } from './mappers/music-track-response.mapper';
 import { MusicMetadataAgentService } from './music-metadata-agent.service';
+import { MusicTrackRepository } from './persistence/music-track.repository';
+import { MusicTrackPolicy } from './policies/music-track.policy';
 import { MusicTrack, MusicTrackSource } from './schemas/music-track.schema';
 import { normalizeMusicAnswer } from './utils/answer-normalization.util';
-
-const execFileAsync = promisify(execFile);
-
-interface UploadedAudioFile {
-  originalname: string;
-  mimetype: string;
-  buffer: Buffer;
-}
 
 export interface GuessSongQuestionResponse {
   id: string;
@@ -41,206 +39,121 @@ export interface GuessSongQuestionResponse {
   audioUrl: string;
   answer: string;
   difficulty: DifficultyLevel;
-  metadata: {
-    artist?: string;
-    album?: string;
-    genre?: string;
-    language?: string;
-    source: 'admin-upload';
-    musicTrackId: string;
-  };
+  metadata: ReturnType<MusicService['buildQuestionMetadata']>;
 }
 
 @Injectable()
 export class MusicService {
-  private static readonly DEFAULT_SNIPPET_DURATION_SECONDS = 15;
-  private static readonly MIN_SNIPPET_DURATION_SECONDS = 10;
-  private static readonly MAX_SNIPPET_DURATION_SECONDS = 20;
-  private static readonly ALLOWED_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.m4a'];
-  private static readonly ALLOWED_AUDIO_MIME_TYPES = [
-    'audio/mpeg',
-    'audio/mp3',
-    'audio/wav',
-    'audio/x-wav',
-    'audio/mp4',
-    'audio/m4a',
-    'audio/x-m4a',
-  ];
+  private readonly logger = new Logger(MusicService.name);
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly metadataAgentService: MusicMetadataAgentService,
-    @InjectModel(MusicTrack.name)
-    private readonly musicTrackModel: Model<MusicTrack>,
-    @InjectModel(Question.name)
-    private readonly questionModel: Model<Question>,
-    @InjectModel(Category.name)
-    private readonly categoryModel: Model<Category>,
+    private readonly config: ConfigService,
+    private readonly metadataAgent: MusicMetadataAgentService,
+    private readonly tracks: MusicTrackRepository,
+    private readonly questions: QuestionRepository,
+    private readonly categories: CategoriesService,
+    private readonly storage: LocalAudioStorageService,
+    private readonly inspector: MediaInspectorService,
+    private readonly audioProcessor: AudioProcessorService,
+    private readonly policy: MusicTrackPolicy,
   ) {}
 
   async createFromUpload(
     file: UploadedAudioFile | undefined,
     dto: UploadMusicTrackDto,
   ) {
-    if (!file) {
-      throw new BadRequestException('Audio file is required');
-    }
-
-    this.validateAudioFile(file);
-
-    const uploadsRoot = this.getUploadsRoot();
-    const originalsDir = join(uploadsRoot, 'music', 'originals');
-    const snippetsDir = join(uploadsRoot, 'music', 'snippets');
-    await mkdir(originalsDir, { recursive: true });
-    await mkdir(snippetsDir, { recursive: true });
-
-    const id = randomUUID();
-    const extension = extname(file.originalname).toLowerCase();
-    const originalFilename = `${id}${extension}`;
-    const snippetFilename = `${id}-snippet.mp3`;
-    const originalPath = join(originalsDir, originalFilename);
-    const snippetPath = join(snippetsDir, snippetFilename);
-
-    await writeFile(originalPath, file.buffer);
-
+    this.policy.validateFile(file);
+    let original: StoredLocalAudio | undefined;
+    let snippet: StoredLocalAudio | undefined;
+    let persisted: MusicTrack | undefined;
     try {
-      const durationSeconds = await this.getAudioDurationSeconds(originalPath);
-      const snippetDurationSeconds = this.getSnippetDuration(
-        dto.snippetDurationSeconds,
+      original = await this.storage.saveOriginal(file);
+      const durationSeconds = await this.inspector.audioDurationSeconds(
+        original.absolutePath,
       );
-      const snippetStartSecond = this.getSnippetStart(
+      const plan = this.policy.snippetPlan(
+        dto.snippetDurationSeconds,
         dto.snippetStartSecond,
         durationSeconds,
-        snippetDurationSeconds,
       );
-
-      await this.createSnippet({
-        inputPath: originalPath,
-        outputPath: snippetPath,
-        startSecond: snippetStartSecond,
-        durationSeconds: snippetDurationSeconds,
+      snippet = await this.storage.allocateSnippet(original.filename);
+      await this.audioProcessor.createMp3Snippet({
+        inputPath: original.absolutePath,
+        outputPath: snippet.absolutePath,
+        startSecond: plan.snippetStartSecond,
+        durationSeconds: plan.snippetDurationSeconds,
       });
-
-      const metadata = await this.metadataAgentService.inferMetadata({
+      const metadata = await this.metadataAgent.inferMetadata({
         filename: file.originalname,
-        title: dto.title,
-        artist: dto.artist,
-        album: dto.album,
-        language: dto.language,
-        genre: dto.genre,
-        difficulty: dto.difficulty,
+        ...dto,
       });
-
-      const shouldDeleteOriginal = this.getBooleanConfig(
+      const deleteOriginal = this.booleanConfig(
         'MUSIC_DELETE_ORIGINAL_AFTER_SNIPPET',
         false,
       );
-
-      if (shouldDeleteOriginal) {
-        await unlink(originalPath).catch(() => undefined);
-      }
-
-      const musicTrack = await this.musicTrackModel.create({
-        title: metadata.title,
-        artist: metadata.artist,
-        album: metadata.album,
-        originalAudioUrl: shouldDeleteOriginal
-          ? undefined
-          : `/uploads/music/originals/${originalFilename}`,
-        snippetAudioUrl: `/uploads/music/snippets/${snippetFilename}`,
+      persisted = await this.tracks.create({
+        ...metadata,
+        originalAudioUrl: deleteOriginal ? undefined : original.url,
+        snippetAudioUrl: snippet.url,
         durationSeconds,
-        snippetStartSecond,
-        snippetDurationSeconds,
-        language: metadata.language,
-        genre: metadata.genre,
-        difficulty: metadata.difficulty,
+        ...plan,
         source: MusicTrackSource.ADMIN_UPLOAD,
         isActive: true,
       });
-
-      const question = await this.createQuestionForTrack(musicTrack);
-
+      const question = await this.createQuestionForTrack(persisted);
+      if (deleteOriginal) await this.cleanup(original, 'original audio');
       return {
-        musicTrack,
-        question: this.toGuessSongQuestion(question, musicTrack),
+        musicTrack: mapMusicTrackResponse(persisted),
+        question: this.toGuessSongQuestion(question, persisted),
       };
     } catch (error) {
-      await rm(snippetPath, { force: true }).catch(() => undefined);
+      if (persisted)
+        await this.tracks
+          .deleteById(persisted._id.toString())
+          .catch((cleanupError) =>
+            this.logCleanup(cleanupError, 'music record'),
+          );
+      await this.cleanup(snippet, 'snippet');
+      await this.cleanup(original, 'original audio');
       throw error;
     }
   }
 
   async findAll() {
-    return this.musicTrackModel.find().sort({ createdAt: -1 }).exec();
+    return (await this.tracks.findAll()).map(mapMusicTrackResponse);
   }
 
   async findById(id: string) {
-    this.assertValidObjectId(id, 'id');
-
-    const musicTrack = await this.musicTrackModel.findById(id).exec();
-
-    if (!musicTrack) {
-      throw new NotFoundException(`Music track with ID "${id}" not found`);
-    }
-
-    return musicTrack;
+    return mapMusicTrackResponse(await this.requireTrack(id));
   }
 
   async update(id: string, dto: UpdateMusicTrackDto) {
-    this.assertValidObjectId(id, 'id');
-
-    const musicTrack = await this.musicTrackModel
-      .findByIdAndUpdate(id, dto, { new: true })
-      .exec();
-
-    if (!musicTrack) {
-      throw new NotFoundException(`Music track with ID "${id}" not found`);
-    }
-
-    await this.questionModel
-      .updateMany(
-        { musicTrack: musicTrack._id },
-        {
-          answer: musicTrack.title,
-          difficulty: musicTrack.difficulty ?? DifficultyLevel.EASY,
-          metadata: this.buildQuestionMetadata(musicTrack),
-        },
-      )
-      .exec();
-
-    return musicTrack;
+    this.assertObjectId(id, 'id');
+    const track = await this.tracks.updateById(id, dto);
+    if (!track) throw this.notFound(id);
+    await this.questions.updateMusicTrackQuestions(track._id, {
+      answer: track.title,
+      difficulty: track.difficulty ?? DifficultyLevel.EASY,
+      metadata: this.buildQuestionMetadata(track),
+    });
+    return mapMusicTrackResponse(track);
   }
 
   async softDelete(id: string) {
-    this.assertValidObjectId(id, 'id');
-
-    const musicTrack = await this.musicTrackModel
-      .findByIdAndUpdate(id, { isActive: false }, { new: true })
-      .exec();
-
-    if (!musicTrack) {
-      throw new NotFoundException(`Music track with ID "${id}" not found`);
-    }
-
-    await this.questionModel
-      .updateMany(
-        { musicTrack: musicTrack._id },
-        { status: QuestionStatus.REJECTED },
-      )
-      .exec();
-
-    return musicTrack;
+    this.assertObjectId(id, 'id');
+    const track = await this.tracks.updateById(id, { isActive: false });
+    if (!track) throw this.notFound(id);
+    await this.questions.updateMusicTrackQuestions(track._id, {
+      status: QuestionStatus.REJECTED,
+    });
+    return mapMusicTrackResponse(track);
   }
 
   async validateAnswer(questionId: string, answer: string) {
-    this.assertValidObjectId(questionId, 'questionId');
-
-    const question = await this.questionModel.findById(questionId).exec();
-
-    if (!question) {
+    this.assertObjectId(questionId, 'questionId');
+    const question = await this.questions.findMusicQuestionById(questionId);
+    if (!question)
       throw new NotFoundException(`Question with ID "${questionId}" not found`);
-    }
-
     if (
       question.type !== QuestionType.AUDIO ||
       question.source !== QuestionSource.MUSIC ||
@@ -248,14 +161,9 @@ export class MusicService {
     ) {
       throw new BadRequestException('Question is not a music audio question');
     }
-
     const normalizedAnswer = normalizeMusicAnswer(answer);
     const normalizedCorrectAnswer = normalizeMusicAnswer(question.answer);
-
-    if (!normalizedAnswer) {
-      throw new BadRequestException('Answer is required');
-    }
-
+    if (!normalizedAnswer) throw new BadRequestException('Answer is required');
     return {
       isCorrect: normalizedAnswer === normalizedCorrectAnswer,
       normalizedAnswer,
@@ -263,227 +171,108 @@ export class MusicService {
     };
   }
 
-  private validateAudioFile(file: UploadedAudioFile) {
-    const extension = extname(file.originalname).toLowerCase();
-
-    if (!MusicService.ALLOWED_AUDIO_EXTENSIONS.includes(extension)) {
-      throw new BadRequestException('Only mp3, wav, and m4a files are allowed');
-    }
-
-    if (
-      file.mimetype &&
-      !MusicService.ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype)
-    ) {
-      throw new BadRequestException('Only mp3, wav, and m4a files are allowed');
-    }
+  private async requireTrack(id: string) {
+    this.assertObjectId(id, 'id');
+    const track = await this.tracks.findById(id);
+    if (!track) throw this.notFound(id);
+    return track;
   }
 
-  private getSnippetDuration(value?: number): number {
-    if (value === undefined) {
-      return MusicService.DEFAULT_SNIPPET_DURATION_SECONDS;
-    }
-
-    if (!Number.isFinite(value)) {
-      throw new BadRequestException('snippetDurationSeconds must be a number');
-    }
-
-    return Math.min(
-      Math.max(value, MusicService.MIN_SNIPPET_DURATION_SECONDS),
-      MusicService.MAX_SNIPPET_DURATION_SECONDS,
-    );
-  }
-
-  private getSnippetStart(
-    requestedStart: number | undefined,
-    durationSeconds: number | undefined,
-    snippetDurationSeconds: number,
-  ) {
-    const duration = durationSeconds ?? 0;
-    const maxStart = Math.max(duration - snippetDurationSeconds, 0);
-    const defaultStart = duration >= 30 + snippetDurationSeconds ? 30 : 0;
-    const start = requestedStart ?? defaultStart;
-
-    return Math.min(Math.max(start, 0), maxStart);
-  }
-
-  private async getAudioDurationSeconds(filePath: string) {
-    try {
-      const { stdout } = await execFileAsync('ffprobe', [
-        '-v',
-        'error',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        filePath,
-      ]);
-      const duration = Number(stdout.trim());
-
-      return Number.isFinite(duration)
-        ? Math.round(duration * 100) / 100
-        : undefined;
-    } catch (error) {
-      this.throwFfmpegError(error, 'FFprobe failed to inspect the audio file');
-    }
-  }
-
-  private async createSnippet(input: {
-    inputPath: string;
-    outputPath: string;
-    startSecond: number;
-    durationSeconds: number;
-  }) {
-    try {
-      await execFileAsync('ffmpeg', [
-        '-y',
-        '-ss',
-        String(input.startSecond),
-        '-i',
-        input.inputPath,
-        '-t',
-        String(input.durationSeconds),
-        '-vn',
-        '-acodec',
-        'libmp3lame',
-        '-ar',
-        '44100',
-        '-ac',
-        '2',
-        input.outputPath,
-      ]);
-    } catch (error) {
-      this.throwFfmpegError(error, 'FFmpeg failed to create the audio snippet');
-    }
-  }
-
-  private throwFfmpegError(error: unknown, fallbackMessage: string): never {
-    if (
-      error instanceof Error &&
-      ('code' in error || error.message.includes('ENOENT'))
-    ) {
-      throw new InternalServerErrorException(
-        'FFmpeg is not installed or is not available in PATH. Install ffmpeg locally and rebuild the backend Docker image.',
-      );
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    throw new InternalServerErrorException(`${fallbackMessage}: ${message}`);
-  }
-
-  private async createQuestionForTrack(musicTrack: MusicTrack) {
-    if (!musicTrack.snippetAudioUrl) {
+  private async createQuestionForTrack(track: MusicTrack) {
+    if (!track.snippetAudioUrl)
       throw new BadRequestException(
         'Cannot create music question without audio',
       );
-    }
-
-    const category = await this.getMusicCategory();
-    const difficulty = musicTrack.difficulty ?? DifficultyLevel.EASY;
-
-    return this.questionModel.create({
+    const configuredSlug =
+      this.config.get<string>('MUSIC_QUESTION_CATEGORY_SLUG') ?? 'songs';
+    const category =
+      await this.categories.findActiveMusicCategory(configuredSlug);
+    if (!category)
+      throw new InternalServerErrorException(
+        `Music question category "${configuredSlug}" was not found. Set MUSIC_QUESTION_CATEGORY_SLUG or create a music/songs category.`,
+      );
+    const difficulty = track.difficulty ?? DifficultyLevel.EASY;
+    return this.questions.create({
       category: category._id,
       question: 'ما اسم هذه الأغنية؟',
-      answer: musicTrack.title,
-      explanation: musicTrack.artist
-        ? `الأغنية هي "${musicTrack.title}" للفنان ${musicTrack.artist}.`
-        : `الأغنية هي "${musicTrack.title}".`,
+      answer: track.title,
+      explanation: track.artist
+        ? `الأغنية هي "${track.title}" للفنان ${track.artist}.`
+        : `الأغنية هي "${track.title}".`,
       difficulty,
       points: this.pointsForDifficulty(difficulty),
       type: QuestionType.AUDIO,
-      mediaUrl: musicTrack.snippetAudioUrl,
-      mediaKey: `admin-upload:${musicTrack._id.toString()}`,
-      musicTrack: musicTrack._id,
+      mediaUrl: track.snippetAudioUrl,
+      mediaKey: `admin-upload:${track._id.toString()}`,
+      musicTrack: track._id,
       hasPreviewAudio: true,
       status: QuestionStatus.DRAFT,
       source: QuestionSource.MUSIC,
       isFreeGameQuestion: false,
-      metadata: this.buildQuestionMetadata(musicTrack),
+      metadata: this.buildQuestionMetadata(track),
     });
   }
 
-  private buildQuestionMetadata(musicTrack: MusicTrack) {
+  buildQuestionMetadata(track: MusicTrack) {
     return {
-      artist: musicTrack.artist,
-      album: musicTrack.album,
-      genre: musicTrack.genre,
-      language: musicTrack.language,
-      source: MusicTrackSource.ADMIN_UPLOAD,
-      musicTrackId: musicTrack._id.toString(),
+      artist: track.artist,
+      album: track.album,
+      genre: track.genre,
+      language: track.language,
+      source: MusicTrackSource.ADMIN_UPLOAD as const,
+      musicTrackId: track._id.toString(),
     };
   }
 
   private toGuessSongQuestion(
     question: Question,
-    musicTrack: MusicTrack,
+    track: MusicTrack,
   ): GuessSongQuestionResponse {
     return {
       id: question._id.toString(),
       type: 'guess_song',
       question: 'ما اسم هذه الأغنية؟',
-      audioUrl: musicTrack.snippetAudioUrl,
-      answer: musicTrack.title,
-      difficulty: musicTrack.difficulty ?? DifficultyLevel.EASY,
-      metadata: this.buildQuestionMetadata(musicTrack),
+      audioUrl: track.snippetAudioUrl,
+      answer: track.title,
+      difficulty: track.difficulty ?? DifficultyLevel.EASY,
+      metadata: this.buildQuestionMetadata(track),
     };
   }
 
-  private async getMusicCategory() {
-    const configuredSlug =
-      this.configService.get<string>('MUSIC_QUESTION_CATEGORY_SLUG') ?? 'songs';
-    const category = await this.categoryModel
-      .findOne({
-        isActive: true,
-        $or: [
-          { slug: configuredSlug },
-          { slug: 'music' },
-          { slug: 'songs' },
-          { name: /^(music|songs|أغاني|اغاني|موسيقى)$/i },
-        ],
-      })
-      .exec();
-
-    if (!category) {
-      throw new InternalServerErrorException(
-        `Music question category "${configuredSlug}" was not found. Set MUSIC_QUESTION_CATEGORY_SLUG or create a music/songs category.`,
-      );
-    }
-
-    return category;
+  private pointsForDifficulty(difficulty: DifficultyLevel) {
+    return difficulty === DifficultyLevel.HARD
+      ? QuestionPoints.HIGH
+      : difficulty === DifficultyLevel.MEDIUM
+        ? QuestionPoints.MEDIUM
+        : QuestionPoints.LOW;
   }
 
-  private pointsForDifficulty(difficulty: DifficultyLevel): QuestionPoints {
-    if (difficulty === DifficultyLevel.HARD) {
-      return QuestionPoints.HIGH;
-    }
-
-    if (difficulty === DifficultyLevel.MEDIUM) {
-      return QuestionPoints.MEDIUM;
-    }
-
-    return QuestionPoints.LOW;
+  private booleanConfig(key: string, fallback: boolean) {
+    const value = this.config.get<string>(key);
+    return value
+      ? ['true', '1', 'yes', 'on'].includes(value.toLowerCase())
+      : fallback;
   }
 
-  private getUploadsRoot() {
-    const configuredPath = this.configService.get<string>('UPLOADS_DIR');
-
-    return configuredPath
-      ? join(configuredPath)
-      : join(process.cwd(), 'uploads');
+  private async cleanup(file: StoredLocalAudio | undefined, label: string) {
+    if (!file) return;
+    await this.storage
+      .delete(file)
+      .catch((error) => this.logCleanup(error, label));
   }
 
-  private getBooleanConfig(key: string, defaultValue: boolean): boolean {
-    const value = this.configService.get<string>(key);
-
-    if (!value) {
-      return defaultValue;
-    }
-
-    return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
+  private logCleanup(error: unknown, label: string) {
+    this.logger.warn(
+      `Failed to clean up ${label}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
-  private assertValidObjectId(id: string, fieldName: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException(`${fieldName} must be a valid MongoDB ID`);
-    }
+  private assertObjectId(id: string, field: string) {
+    if (!Types.ObjectId.isValid(id))
+      throw new BadRequestException(`${field} must be a valid MongoDB ID`);
+  }
+
+  private notFound(id: string) {
+    return new NotFoundException(`Music track with ID "${id}" not found`);
   }
 }

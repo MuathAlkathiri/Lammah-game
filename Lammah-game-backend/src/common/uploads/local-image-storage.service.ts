@@ -27,7 +27,12 @@ interface SaveLocalImageOptions {
 @Injectable()
 export class LocalImageStorageService {
   private static readonly MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-  private static readonly ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+  private static readonly ALLOWED_EXTENSIONS = [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+  ];
   private static readonly ALLOWED_MIME_TYPES = [
     'image/jpeg',
     'image/jpg',
@@ -49,10 +54,13 @@ export class LocalImageStorageService {
     await mkdir(absoluteDir, { recursive: true });
 
     const extension = extname(file.originalname).toLowerCase();
-    const filename = `${options.filenamePrefix}-${Date.now()}-${randomBytes(6).toString(
-      'hex',
-    )}${extension}`;
-    const relativePath = join('uploads', relativeDir, filename).replace(/\\/g, '/');
+    const filename = `${options.filenamePrefix}-${Date.now()}-${randomBytes(
+      6,
+    ).toString('hex')}${extension}`;
+    const relativePath = join('uploads', relativeDir, filename).replace(
+      /\\/g,
+      '/',
+    );
     const absolutePath = join(absoluteDir, filename);
 
     await writeFile(absolutePath, file.buffer);
@@ -80,7 +88,9 @@ export class LocalImageStorageService {
     const extension = extname(file.originalname).toLowerCase();
 
     if (!LocalImageStorageService.ALLOWED_EXTENSIONS.includes(extension)) {
-      throw new BadRequestException('Banner must be a jpg, jpeg, png, or webp image');
+      throw new BadRequestException(
+        'Banner must be a jpg, jpeg, png, or webp image',
+      );
     }
 
     if (!LocalImageStorageService.ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -94,7 +104,8 @@ export class LocalImageStorageService {
 
   private getUploadsRoot(): string {
     return (
-      this.configService.get<string>('UPLOADS_DIR') ?? join(process.cwd(), 'uploads')
+      this.configService.get<string>('UPLOADS_DIR') ??
+      join(process.cwd(), 'uploads')
     );
   }
 }

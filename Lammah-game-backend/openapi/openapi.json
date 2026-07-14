@@ -1,0 +1,4075 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "usersList",
+        "summary": "List users for administration",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "authRegister",
+        "summary": "Register a new normal user",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Register user",
+                  "value": {
+                    "fullName": "Muath",
+                    "email": "user@example.com",
+                    "password": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email is already registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 409,
+                    "message": "Email is already registered",
+                    "error": "Conflict"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "authLogin",
+        "summary": "Login and receive a JWT access token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Login user",
+                  "value": {
+                    "email": "user@example.com",
+                    "password": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 401,
+                    "message": "Invalid email or password",
+                    "error": "Unauthorized"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "authGetCurrentUser",
+        "summary": "Get the current authenticated user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current user returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 401,
+                    "message": "Unauthorized"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/catalogs": {
+      "get": {
+        "operationId": "catalogsList",
+        "summary": "Get all catalogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Catalogs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalogs"
+        ]
+      },
+      "post": {
+        "operationId": "catalogsCreate",
+        "summary": "Create a new catalog",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart catalog with optional banner",
+                  "value": {
+                    "catalog": "{\"name\":{\"ar\":\"رياضة\",\"en\":\"Sports\"},\"description\":{\"ar\":\"أسئلة رياضية متنوعة\",\"en\":\"Various sports questions\"},\"slug\":\"sports\",\"icon\":\"trophy\",\"isActive\":true,\"sortOrder\":1}"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart catalog with optional banner",
+                  "value": {
+                    "catalog": "{\"name\":{\"ar\":\"رياضة\",\"en\":\"Sports\"},\"description\":{\"ar\":\"أسئلة رياضية متنوعة\",\"en\":\"Various sports questions\"},\"slug\":\"sports\",\"icon\":\"trophy\",\"isActive\":true,\"sortOrder\":1}"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMutationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalogs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/catalogs/{id}": {
+      "get": {
+        "operationId": "catalogsGetById",
+        "summary": "Get a specific catalog by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00210",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalogs"
+        ]
+      },
+      "patch": {
+        "operationId": "catalogsUpdate",
+        "summary": "Update a catalog",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00210",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogMultipartBodyDto"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogMultipartBodyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMutationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Catalogs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "catalogsDelete",
+        "summary": "Delete a catalog",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00210",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Catalog deleted successfully"
+          },
+          "409": {
+            "description": "Cannot delete catalog because it has linked categories."
+          }
+        },
+        "tags": [
+          "Catalogs"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/categories": {
+      "post": {
+        "operationId": "categoriesCreate",
+        "summary": "Create a new category",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart category with optional banner",
+                  "value": {
+                    "category": "{\"name\":\"Science\",\"slug\":\"science\",\"description\":\"Science and discovery questions\",\"catalogId\":\"66b8f5f2c9d7a8b1e3f00210\",\"isActive\":true}"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart category with optional banner",
+                  "value": {
+                    "category": "{\"name\":\"Science\",\"slug\":\"science\",\"description\":\"Science and discovery questions\",\"catalogId\":\"66b8f5f2c9d7a8b1e3f00210\",\"isActive\":true}"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Category created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "categoriesList",
+        "summary": "Get all categories",
+        "parameters": [
+          {
+            "name": "catalogId",
+            "required": false,
+            "in": "query",
+            "description": "Filter categories by catalog ID",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00210",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Categories retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      }
+    },
+    "/categories/{id}": {
+      "get": {
+        "operationId": "categoriesGetById",
+        "summary": "Get a specific category by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Category MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00222",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Category retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDetailResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Category not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 404,
+                    "message": "Category with ID \"66b8f5f2c9d7a8b1e3f00222\" not found",
+                    "error": "Not Found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      },
+      "patch": {
+        "operationId": "categoriesUpdate",
+        "summary": "Update a category",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Category MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00222",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart update with optional replacement banner",
+                  "value": {
+                    "category": "{\"name\":\"Science Updated\",\"description\":\"Updated science category description\",\"catalogId\":\"66b8f5f2c9d7a8b1e3f00210\",\"isActive\":true}"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMultipartBodyDto"
+              },
+              "examples": {
+                "multipart": {
+                  "summary": "Multipart update with optional replacement banner",
+                  "value": {
+                    "category": "{\"name\":\"Science Updated\",\"description\":\"Updated science category description\",\"catalogId\":\"66b8f5f2c9d7a8b1e3f00210\",\"isActive\":true}"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Category updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMutationResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Category not found"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "categoriesDelete",
+        "summary": "Delete a category",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Category MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00222",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Category deleted successfully"
+          },
+          "404": {
+            "description": "Category not found"
+          }
+        },
+        "tags": [
+          "Categories"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/questions": {
+      "post": {
+        "operationId": "questionsCreate",
+        "summary": "Create a new question",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuestionDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Create approved free-game question",
+                  "value": {
+                    "category": "66b8f5f2c9d7a8b1e3f00222",
+                    "question": "What planet is known as the Red Planet?",
+                    "answer": "Mars",
+                    "explanation": "Mars appears red because of iron oxide on its surface.",
+                    "difficulty": "easy",
+                    "points": 200,
+                    "type": "text",
+                    "status": "approved",
+                    "source": "manual",
+                    "isFreeGameQuestion": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Question created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "tags": [
+          "Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "questionsList",
+        "summary": "Get all questions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Questions retrieved successfully. Answers are hidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Questions"
+        ]
+      }
+    },
+    "/questions/{id}": {
+      "get": {
+        "operationId": "questionsGetById",
+        "summary": "Get a specific question by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Question MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00333",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Question retrieved successfully. Answer is hidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDetailResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Question not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 404,
+                    "message": "Question with ID \"66b8f5f2c9d7a8b1e3f00333\" not found",
+                    "error": "Not Found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Questions"
+        ]
+      },
+      "patch": {
+        "operationId": "questionsUpdate",
+        "summary": "Update a question",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Question MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00333",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateQuestionDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Approve and mark as free-game question",
+                  "value": {
+                    "status": "approved",
+                    "isFreeGameQuestion": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Question updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionMutationResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Question not found"
+          }
+        },
+        "tags": [
+          "Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "questionsDelete",
+        "summary": "Delete a question",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Question MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00333",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Question deleted successfully"
+          },
+          "404": {
+            "description": "Question not found"
+          }
+        },
+        "tags": [
+          "Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions": {
+      "get": {
+        "operationId": "adminQuestionsList",
+        "summary": "Admin: get all questions including answers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Questions retrieved successfully with answers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions/ai-generated/list": {
+      "get": {
+        "operationId": "questionsListAiGenerated",
+        "summary": "List AI-generated questions for review",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "difficulty",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "gameMode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assetStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "catalog",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions/bulk-action": {
+      "post": {
+        "operationId": "questionsBulkAction",
+        "summary": "Apply an admin review action to questions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkQuestionActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkQuestionActionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions/{id}/retry-primary-asset": {
+      "post": {
+        "operationId": "questionsRetryPrimaryAsset",
+        "summary": "Retry primary asset resolution",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions/{id}/retry-cover-image": {
+      "post": {
+        "operationId": "questionsRetryCoverImage",
+        "summary": "Retry cover image resolution",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/questions/{id}": {
+      "get": {
+        "operationId": "adminQuestionsGetById",
+        "summary": "Admin: get a specific question including answer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Question MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00333",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Question retrieved successfully with answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Questions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/ai-agent/generate-questions": {
+      "post": {
+        "operationId": "aiGenerateQuestions",
+        "summary": "Generate questions for a category using the configured AI provider",
+        "description": "Generates open-answer questions for a selected category. Questions are saved as drafts and must be reviewed/approved by admin before use in games.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQuestionsDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Generate questions for category",
+                  "value": {
+                    "categoryId": "66b8f5f2c9d7a8b1e3f00222",
+                    "count": 6
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Questions generated and saved as drafts successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateQuestionsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - category not found or validation error"
+          },
+          "500": {
+            "description": "Internal server error - AI provider API error or other issues"
+          }
+        },
+        "tags": [
+          "AI Agent"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/ai-generator/debug-tools": {
+      "get": {
+        "operationId": "aiDebugTools",
+        "summary": "Debug local media tool availability for AI asset generation",
+        "deprecated": true,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiToolDiagnosticsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin AI Generator"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/ai-generator/generate-reviewed": {
+      "post": {
+        "operationId": "aiGenerateReviewed",
+        "summary": "Generate reviewed AI question drafts without saving them",
+        "description": "Generates multiple-choice question drafts from the configured AI provider, validates quality issues, and returns drafts only.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateReviewedQuestionsDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Generate reviewed Arabic World Cup questions",
+                  "value": {
+                    "catalogName": "رياضة",
+                    "categoryName": "كأس العالم",
+                    "difficulty": "medium",
+                    "count": 10,
+                    "language": "ar"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reviewed question drafts generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateReviewedQuestionsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin AI Generator"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/ai-generator/save-drafts": {
+      "post": {
+        "operationId": "aiSaveReviewedDrafts",
+        "summary": "Persist reviewed questions as unpublished AI drafts",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveReviewedDraftsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveReviewedDraftsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin AI Generator"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/music-tracks/upload": {
+      "post": {
+        "operationId": "musicTracksUpload",
+        "summary": "Upload an audio file and create a guess-the-song question",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "ar",
+                      "en",
+                      "other"
+                    ]
+                  },
+                  "genre": {
+                    "type": "string"
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "enum": [
+                      "easy",
+                      "medium",
+                      "hard"
+                    ]
+                  },
+                  "snippetDurationSeconds": {
+                    "type": "number",
+                    "minimum": 10,
+                    "maximum": 20
+                  },
+                  "snippetStartSecond": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Music track and question created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicTrackDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Music Tracks"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/music-tracks": {
+      "get": {
+        "operationId": "musicTracksList",
+        "summary": "List uploaded music tracks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicTrackListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Music Tracks"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/music-tracks/{id}": {
+      "get": {
+        "operationId": "musicTracksGetById",
+        "summary": "Get one uploaded music track",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicTrackDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Music Tracks"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "musicTracksUpdate",
+        "summary": "Update music track metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMusicTrackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicTrackDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Music Tracks"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "musicTracksDelete",
+        "summary": "Soft-delete a music track",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicTrackDetailResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin Music Tracks"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/music/questions/validate-answer": {
+      "post": {
+        "operationId": "musicValidateAnswer",
+        "summary": "Validate a typed answer for a music question",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateMusicQuestionAnswerDto"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "questionId": "507f1f77bcf86cd799439011",
+                    "answer": "الأماكن"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Answer validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicAnswerValidationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Music Questions"
+        ]
+      }
+    },
+    "/games": {
+      "post": {
+        "operationId": "gamesCreate",
+        "summary": "Create a new game with 2 teams",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGameDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Create game",
+                  "value": {
+                    "name": "Friday Family Game",
+                    "teams": [
+                      {
+                        "name": "Team Falcons",
+                        "members": [
+                          "Muath",
+                          "Sara"
+                        ]
+                      },
+                      {
+                        "name": "Team Stars",
+                        "members": [
+                          "Noura",
+                          "Fahad"
+                        ]
+                      }
+                    ],
+                    "categoryIds": [
+                      "66b8f5f2c9d7a8b1e3f00222",
+                      "66b8f5f2c9d7a8b1e3f00223"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Game created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 400,
+                    "message": "Exactly 2 teams are required",
+                    "error": "Bad Request"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Subscription required after free game is used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 403,
+                    "message": "You need an active subscription to create more games.",
+                    "error": "Forbidden"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "gamesList",
+        "summary": "Get all games",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Games retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/games/{id}": {
+      "get": {
+        "operationId": "gamesGetById",
+        "summary": "Get a specific game by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Game MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00444",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Game retrieved successfully. Answers hidden by default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetailResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 404,
+                    "message": "Game with ID \"66b8f5f2c9d7a8b1e3f00444\" not found",
+                    "error": "Not Found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/games/{id}/reveal-answer": {
+      "post": {
+        "operationId": "gamesRevealAnswer",
+        "summary": "Reveal the correct answer for a question",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Game MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00444",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealAnswerDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Reveal answer",
+                  "value": {
+                    "questionId": "66b8f5f2c9d7a8b1e3f00333"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Answer revealed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - question not found in game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 400,
+                    "message": "Question not found in this game board",
+                    "error": "Bad Request"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found"
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/games/{id}/award-points": {
+      "post": {
+        "operationId": "gamesAwardPoints",
+        "summary": "Award points to a team for answering correctly",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Game MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00444",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "questionId",
+                  "teamIndex"
+                ],
+                "properties": {
+                  "questionId": {
+                    "type": "string",
+                    "example": "66b8f5f2c9d7a8b1e3f00333"
+                  },
+                  "teamIndex": {
+                    "type": "number",
+                    "example": 0
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "summary": "Award points to team 0",
+                  "value": {
+                    "questionId": "66b8f5f2c9d7a8b1e3f00333",
+                    "teamIndex": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Points awarded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid teamIndex or question already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 400,
+                    "message": "Question is already answered",
+                    "error": "Bad Request"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found"
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/games/{id}/skip-question": {
+      "post": {
+        "operationId": "gamesSkipQuestion",
+        "summary": "Skip a question without awarding points",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Game MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00444",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkipQuestionDto"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Skip question",
+                  "value": {
+                    "questionId": "66b8f5f2c9d7a8b1e3f00333"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Question skipped successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMutationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - question already answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 400,
+                    "message": "Question is already answered",
+                    "error": "Bad Request"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found"
+          }
+        },
+        "tags": [
+          "Games"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/subscriptions/users/{userId}": {
+      "patch": {
+        "operationId": "usersUpdateSubscription",
+        "summary": "Manually update a user subscription",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "description": "User MongoDB ObjectId",
+            "schema": {
+              "example": "66b8f5f2c9d7a8b1e3f00111",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserSubscriptionDto"
+              },
+              "examples": {
+                "activate": {
+                  "summary": "Activate subscription",
+                  "value": {
+                    "subscriptionStatus": "active",
+                    "subscriptionExpiresAt": "2026-12-31T00:00:00.000Z"
+                  }
+                },
+                "expire": {
+                  "summary": "Expire subscription",
+                  "value": {
+                    "subscriptionStatus": "expired",
+                    "subscriptionExpiresAt": "2026-06-20T00:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateUserSubscriptionResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 403,
+                    "message": "Forbidden resource",
+                    "error": "Forbidden"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Lammah Game API",
+    "description": "Runtime HTTP contract for Lammah game administration, content, and gameplay.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "UserRole": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "user"
+        ]
+      },
+      "SubscriptionStatus": {
+        "type": "string",
+        "enum": [
+          "none",
+          "active",
+          "expired"
+        ]
+      },
+      "UserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "freeGamesUsed": {
+            "type": "number",
+            "minimum": 0
+          },
+          "subscriptionStatus": {
+            "$ref": "#/components/schemas/SubscriptionStatus"
+          },
+          "subscriptionExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "email",
+          "role",
+          "freeGamesUsed",
+          "subscriptionStatus"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 6,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "fullName",
+          "email",
+          "password"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT bearer access token"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponseDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "user"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "CatalogLocalizedTextResponseDto": {
+        "type": "object",
+        "properties": {
+          "ar": {
+            "type": "string"
+          },
+          "en": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ar",
+          "en"
+        ]
+      },
+      "CatalogBannerResponseDto": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "mimetype": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "filename",
+          "url",
+          "mimetype",
+          "size"
+        ]
+      },
+      "CatalogResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/CatalogLocalizedTextResponseDto"
+          },
+          "description": {
+            "$ref": "#/components/schemas/CatalogLocalizedTextResponseDto"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "banner": {
+            "$ref": "#/components/schemas/CatalogBannerResponseDto"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "name",
+          "slug",
+          "isActive",
+          "sortOrder"
+        ]
+      },
+      "CatalogListResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "CatalogDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/CatalogResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "CatalogMultipartBodyDto": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string",
+            "description": "JSON string containing CreateCatalogDto or UpdateCatalogDto fields",
+            "example": "{\"name\":{\"ar\":\"رياضة\",\"en\":\"Sports\"},\"description\":{\"ar\":\"أسئلة رياضية متنوعة\",\"en\":\"Various sports questions\"},\"slug\":\"sports\",\"icon\":\"trophy\",\"isActive\":true,\"sortOrder\":1}"
+          },
+          "banner": {
+            "type": "string",
+            "format": "binary",
+            "description": "Optional catalog banner image (jpg, jpeg, png, webp)"
+          }
+        },
+        "required": [
+          "catalog"
+        ]
+      },
+      "CatalogMutationResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/CatalogResponseDto"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data",
+          "message"
+        ]
+      },
+      "CategoryMultipartBodyDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "JSON string containing CreateCategoryDto or UpdateCategoryDto fields",
+            "example": "{\"name\":\"Science\",\"slug\":\"science\",\"description\":\"Science and discovery questions\",\"catalogId\":\"66b8f5f2c9d7a8b1e3f00223\",\"sortOrder\":0,\"isActive\":true,\"aiConfig\":{\"knowledgeFile\":\"sports/world-cup.md\",\"temperature\":0.7,\"preferredQuestionTypes\":[\"historical moments\",\"records\",\"finals\"],\"avoidTopics\":[\"winner of 2022\",\"host country 2022\"],\"extraInstructions\":\"Focus on fun offline party-game questions.\"},\"gameplayConfig\":{\"gameModes\":{\"trivia\":30,\"identifyCharacter\":30,\"identifyVoice\":20,\"completeQuote\":20},\"supportedAssetTypes\":[\"text\",\"image\",\"audio\",\"quote\",\"emoji\",\"timeline\"],\"preferredDifficultyMix\":{\"easy\":30,\"medium\":50,\"hard\":20},\"maxAudioDuration\":6,\"imageRevealAllowed\":true,\"allowMultipleAssets\":false}}"
+          },
+          "banner": {
+            "type": "string",
+            "format": "binary",
+            "description": "Optional category banner image (jpg, jpeg, png, webp)"
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
+      "CategoryCatalogResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/CatalogLocalizedTextResponseDto"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "name",
+          "slug"
+        ]
+      },
+      "CategoryBannerResponseDto": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "mimetype": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "filename",
+          "url",
+          "mimetype",
+          "size"
+        ]
+      },
+      "CategoryAiConfigDto": {
+        "type": "object",
+        "properties": {
+          "knowledgeFile": {
+            "type": "string",
+            "example": "sports/world-cup.md"
+          },
+          "temperature": {
+            "type": "number",
+            "example": 0.7,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "preferredQuestionTypes": {
+            "example": [
+              "historical moments",
+              "records",
+              "finals"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "avoidTopics": {
+            "example": [
+              "winner of 2022",
+              "host country 2022"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extraInstructions": {
+            "type": "string",
+            "example": "Focus on fun offline party-game questions."
+          }
+        }
+      },
+      "CategoryGameplayConfigDto": {
+        "type": "object",
+        "properties": {
+          "gameModes": {
+            "type": "object",
+            "example": {
+              "trivia": 30,
+              "identifyCharacter": 30,
+              "identifyVoice": 20,
+              "completeQuote": 20
+            }
+          },
+          "questionTypes": {
+            "type": "object",
+            "description": "Legacy field. Prefer gameModes for new categories.",
+            "example": {
+              "text": 20,
+              "image": 35,
+              "audio": 25,
+              "quote": 10,
+              "emoji": 5,
+              "timeline": 5
+            }
+          },
+          "supportedAssetTypes": {
+            "example": [
+              "text",
+              "image",
+              "audio",
+              "quote",
+              "emoji",
+              "timeline"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "musicConfig": {
+            "type": "object",
+            "example": {
+              "allowedRegions": [
+                "khaliji",
+                "egyptian"
+              ],
+              "allowedLanguages": [
+                "ar"
+              ],
+              "maxPreviewDuration": 15
+            }
+          },
+          "preferredDifficultyMix": {
+            "type": "object",
+            "example": {
+              "easy": 30,
+              "medium": 50,
+              "hard": 20
+            }
+          },
+          "maxAudioDuration": {
+            "type": "number",
+            "example": 6,
+            "minimum": 1,
+            "maximum": 20
+          },
+          "imageRevealAllowed": {
+            "type": "boolean",
+            "example": true
+          },
+          "allowMultipleAssets": {
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
+      "CategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "catalogId": {
+            "type": "string",
+            "nullable": true
+          },
+          "catalog": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryCatalogResponseDto"
+              }
+            ]
+          },
+          "banner": {
+            "$ref": "#/components/schemas/CategoryBannerResponseDto"
+          },
+          "aiConfig": {
+            "$ref": "#/components/schemas/CategoryAiConfigDto"
+          },
+          "gameplayConfig": {
+            "$ref": "#/components/schemas/CategoryGameplayConfigDto"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "name",
+          "slug",
+          "isActive",
+          "sortOrder"
+        ]
+      },
+      "CategoryMutationResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/CategoryResponseDto"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data",
+          "message"
+        ]
+      },
+      "CategoryListResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "CategoryDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/CategoryResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "CreateQuestionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DifficultyLevel": {
+        "type": "string",
+        "enum": [
+          "easy",
+          "medium",
+          "hard"
+        ]
+      },
+      "GameMode": {
+        "type": "string",
+        "enum": [
+          "trivia",
+          "identifyCharacter",
+          "identifyVoice",
+          "identifyImage",
+          "completeQuote",
+          "timeline",
+          "emojiPuzzle",
+          "identifySong",
+          "identifySinger",
+          "identifyMusicIntro"
+        ]
+      },
+      "QuestionStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "approved",
+          "published",
+          "archived",
+          "rejected"
+        ]
+      },
+      "QuestionSource": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "ai",
+          "imported",
+          "music"
+        ]
+      },
+      "QuestionAssetType": {
+        "type": "string",
+        "enum": [
+          "audio",
+          "image",
+          "video",
+          "gif"
+        ]
+      },
+      "QuestionAssetResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/QuestionAssetType"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "searchQuery": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "type",
+          "url",
+          "source"
+        ]
+      },
+      "AssetStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_REQUIRED",
+          "PENDING",
+          "READY",
+          "FAILED"
+        ]
+      },
+      "QuestionResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "correctAnswer": {
+            "type": "string"
+          },
+          "wrongAnswers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "points": {
+            "type": "number",
+            "enum": [
+              200,
+              400,
+              600
+            ]
+          },
+          "score": {
+            "type": "number",
+            "enum": [
+              200,
+              400,
+              600
+            ]
+          },
+          "gameMode": {
+            "$ref": "#/components/schemas/GameMode"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuestionStatus"
+          },
+          "source": {
+            "$ref": "#/components/schemas/QuestionSource"
+          },
+          "primaryAsset": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuestionAssetResponseDto"
+              }
+            ]
+          },
+          "coverImage": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuestionAssetResponseDto"
+              }
+            ]
+          },
+          "primaryAssetRequest": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "coverImageRequest": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "coverImageStatus": {
+            "$ref": "#/components/schemas/AssetStatus"
+          },
+          "coverImageFailureReason": {
+            "type": "string"
+          },
+          "assetStatus": {
+            "$ref": "#/components/schemas/AssetStatus"
+          },
+          "assetFailureReason": {
+            "type": "string"
+          },
+          "assetFailureStep": {
+            "type": "string"
+          },
+          "assetFailureDiagnostics": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "gameplayMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "aiMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "mediaUrl": {
+            "type": "string"
+          },
+          "hasPreviewAudio": {
+            "type": "boolean"
+          },
+          "isFreeGameQuestion": {
+            "type": "boolean"
+          },
+          "qualityScore": {
+            "type": "number"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "_id",
+          "question",
+          "wrongAnswers",
+          "difficulty",
+          "status",
+          "source"
+        ]
+      },
+      "QuestionMutationResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/QuestionResponseDto"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data",
+          "message"
+        ]
+      },
+      "QuestionListResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "QuestionDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/QuestionResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "UpdateQuestionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BulkQuestionActionDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "delete"
+            ]
+          }
+        },
+        "required": [
+          "ids",
+          "action"
+        ]
+      },
+      "BulkQuestionActionResponseDto": {
+        "type": "object",
+        "properties": {
+          "modifiedCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "modifiedCount"
+        ]
+      },
+      "GenerateQuestionsDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 2
+          }
+        },
+        "required": [
+          "categoryId"
+        ]
+      },
+      "GenerateQuestionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "message": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "count",
+          "data"
+        ]
+      },
+      "AiToolDiagnosticsResponseDto": {
+        "type": "object",
+        "properties": {
+          "ffmpegAvailable": {
+            "type": "boolean"
+          },
+          "ytDlpAvailable": {
+            "type": "boolean"
+          },
+          "ffmpegVersion": {
+            "type": "string"
+          },
+          "ytDlpVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ffmpegAvailable",
+          "ytDlpAvailable",
+          "ffmpegVersion",
+          "ytDlpVersion"
+        ]
+      },
+      "GenerateReviewedQuestionsDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string"
+          },
+          "catalogName": {
+            "type": "string"
+          },
+          "categoryName": {
+            "type": "string"
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "count": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 2
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "ar"
+            ]
+          }
+        }
+      },
+      "AiAssetRequestResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "quote",
+              "emoji",
+              "timeline",
+              "video",
+              "gif"
+            ]
+          },
+          "assetType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "quote",
+              "emoji",
+              "timeline",
+              "video",
+              "gif"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "franchise": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "localizedName": {
+            "type": "string"
+          },
+          "englishTitle": {
+            "type": "string"
+          },
+          "arabicTitle": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "visualHint": {
+            "type": "string"
+          },
+          "categoryType": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "gameplay",
+              "decorative"
+            ]
+          },
+          "duration": {
+            "type": "number"
+          },
+          "speaker": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "AiAssetResponseDto": {
+        "type": "object",
+        "properties": {
+          "localPath": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "quote",
+              "emoji",
+              "timeline",
+              "video",
+              "gif"
+            ]
+          },
+          "duration": {
+            "type": "number"
+          },
+          "sourceUrl": {
+            "type": "string"
+          },
+          "searchQuery": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "localPath",
+          "url",
+          "source",
+          "provider",
+          "type"
+        ]
+      },
+      "AiAgentTraceResponseDto": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed",
+              "fallback"
+            ]
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "status",
+          "durationMs"
+        ]
+      },
+      "ReviewedQuestionDraftResponseDto": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "correctAnswer": {
+            "type": "string"
+          },
+          "wrongAnswers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ]
+          },
+          "gameMode": {
+            "type": "string",
+            "enum": [
+              "trivia",
+              "identifyCharacter",
+              "identifyVoice",
+              "identifyImage",
+              "completeQuote",
+              "timeline",
+              "emojiPuzzle",
+              "identifySong",
+              "identifySinger",
+              "identifyMusicIntro"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "audio",
+              "quote",
+              "emoji",
+              "timeline",
+              "video",
+              "gif"
+            ]
+          },
+          "assetRequest": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetRequestResponseDto"
+              }
+            ]
+          },
+          "assetStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUIRED",
+              "PENDING",
+              "READY",
+              "FAILED"
+            ]
+          },
+          "asset": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetResponseDto"
+              }
+            ]
+          },
+          "primaryAssetRequest": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetRequestResponseDto"
+              }
+            ]
+          },
+          "primaryAssetStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUIRED",
+              "PENDING",
+              "READY",
+              "FAILED"
+            ]
+          },
+          "primaryAsset": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetResponseDto"
+              }
+            ]
+          },
+          "coverImageRequest": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetRequestResponseDto"
+              }
+            ]
+          },
+          "coverImageStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUIRED",
+              "PENDING",
+              "READY",
+              "FAILED"
+            ]
+          },
+          "coverImage": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiAssetResponseDto"
+              }
+            ]
+          },
+          "coverImageFailureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "assetFailureReason": {
+            "type": "string"
+          },
+          "assetFailureStep": {
+            "type": "string"
+          },
+          "assetFailureDiagnostics": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            ]
+          },
+          "wasGameplayAutoFixed": {
+            "type": "boolean"
+          },
+          "gameplayFixReason": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "qualityScore": {
+            "type": "number"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "agentTrace": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiAgentTraceResponseDto"
+            }
+          },
+          "gameplayMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "aiMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "question",
+          "correctAnswer",
+          "wrongAnswers",
+          "difficulty",
+          "gameMode",
+          "type",
+          "assetStatus",
+          "primaryAssetStatus",
+          "coverImageStatus",
+          "explanation",
+          "qualityScore",
+          "issues"
+        ]
+      },
+      "ReviewedQuestionsDataResponseDto": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedQuestionDraftResponseDto"
+            }
+          }
+        },
+        "required": [
+          "questions"
+        ]
+      },
+      "GenerateReviewedQuestionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 201
+          },
+          "message": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "meta": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReviewedQuestionsDataResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "count",
+          "meta",
+          "data"
+        ]
+      },
+      "SaveReviewedDraftsDto": {
+        "type": "object",
+        "properties": {
+          "drafts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "catalogId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "drafts",
+          "categoryId"
+        ]
+      },
+      "SaveDraftFailureDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "reason"
+        ]
+      },
+      "SaveReviewedDraftsResponseDto": {
+        "type": "object",
+        "properties": {
+          "savedCount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "failedCount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "savedQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionResponseDto"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SaveDraftFailureDto"
+            }
+          }
+        },
+        "required": [
+          "savedCount",
+          "failedCount",
+          "savedQuestions",
+          "failures"
+        ]
+      },
+      "MusicTrackLanguage": {
+        "type": "string",
+        "enum": [
+          "ar",
+          "en",
+          "other"
+        ]
+      },
+      "MusicTrackSource": {
+        "type": "string",
+        "enum": [
+          "admin-upload"
+        ]
+      },
+      "MusicTrackResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "album": {
+            "type": "string"
+          },
+          "originalAudioUrl": {
+            "type": "string"
+          },
+          "snippetAudioUrl": {
+            "type": "string"
+          },
+          "artworkUrl": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": "number"
+          },
+          "snippetStartSecond": {
+            "type": "number"
+          },
+          "snippetDurationSeconds": {
+            "type": "number"
+          },
+          "language": {
+            "$ref": "#/components/schemas/MusicTrackLanguage"
+          },
+          "genre": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MusicTrackSource"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "_id",
+          "title",
+          "snippetAudioUrl",
+          "snippetDurationSeconds",
+          "source",
+          "isActive"
+        ]
+      },
+      "MusicTrackDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/MusicTrackResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "MusicTrackListResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MusicTrackResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "UpdateMusicTrackDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "album": {
+            "type": "string"
+          },
+          "artworkUrl": {
+            "type": "string"
+          },
+          "language": {
+            "$ref": "#/components/schemas/MusicTrackLanguage"
+          },
+          "genre": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/DifficultyLevel"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ValidateMusicQuestionAnswerDto": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionId",
+          "answer"
+        ]
+      },
+      "MusicAnswerValidationDto": {
+        "type": "object",
+        "properties": {
+          "isCorrect": {
+            "type": "boolean"
+          },
+          "normalizedAnswer": {
+            "type": "string"
+          },
+          "normalizedCorrectAnswer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "isCorrect",
+          "normalizedAnswer",
+          "normalizedCorrectAnswer"
+        ]
+      },
+      "MusicAnswerValidationResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 201
+          },
+          "data": {
+            "$ref": "#/components/schemas/MusicAnswerValidationDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "TeamDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "members"
+        ]
+      },
+      "CreateGameDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "teams": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamDto"
+            }
+          },
+          "categoryIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "teams",
+          "categoryIds"
+        ]
+      },
+      "GameTeamResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "members",
+          "score"
+        ]
+      },
+      "GameBoardQuestionResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "question": {
+            "$ref": "#/components/schemas/QuestionResponseDto"
+          },
+          "points": {
+            "type": "number",
+            "enum": [
+              200,
+              400,
+              600
+            ]
+          },
+          "isAnswered": {
+            "type": "boolean"
+          },
+          "isAnswerRevealed": {
+            "type": "boolean"
+          },
+          "answeredByTeamIndex": {
+            "type": "number"
+          },
+          "awardedPoints": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "question",
+          "points",
+          "isAnswered",
+          "isAnswerRevealed"
+        ]
+      },
+      "GameCategoryBoardResponseDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CategoryResponseDto"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameBoardQuestionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "category",
+          "questions"
+        ]
+      },
+      "GameResponseDto": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "active",
+              "finished"
+            ]
+          },
+          "teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameTeamResponseDto"
+            }
+          },
+          "selectedCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryResponseDto"
+            }
+          },
+          "board": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameCategoryBoardResponseDto"
+            }
+          },
+          "currentTurnTeamIndex": {
+            "type": "number"
+          },
+          "finishedAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "name",
+          "status",
+          "teams",
+          "selectedCategories",
+          "board",
+          "currentTurnTeamIndex"
+        ]
+      },
+      "GameMutationResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/GameResponseDto"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data",
+          "message"
+        ]
+      },
+      "GameListResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameResponseDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "GameDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "data": {
+            "$ref": "#/components/schemas/GameResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "data"
+        ]
+      },
+      "RevealAnswerDto": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionId"
+        ]
+      },
+      "SkipQuestionDto": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "questionId"
+        ]
+      },
+      "UpdateUserSubscriptionDto": {
+        "type": "object",
+        "properties": {
+          "subscriptionStatus": {
+            "$ref": "#/components/schemas/SubscriptionStatus"
+          },
+          "subscriptionExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "subscriptionStatus"
+        ]
+      },
+      "UpdateUserSubscriptionResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 200
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserResponseDto"
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "data"
+        ]
+      },
+      "ValidationErrorDetailDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field or validation constraint identifier"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable validation failure"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "CONCURRENT_GAME_UPDATE"
+          },
+          "statusCode": {
+            "type": "number",
+            "example": 400
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "example": "Validation failed"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "path": {
+            "type": "string",
+            "example": "/questions"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorDetailDto"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "timestamp",
+          "path"
+        ]
+      }
+    }
+  }
+}

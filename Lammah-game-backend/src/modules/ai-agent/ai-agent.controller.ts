@@ -13,6 +13,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/schemas/user.schema';
 import { ids } from '../../common/swagger/examples';
+import { GenerateQuestionsResponseDto } from './dto/ai-response.dto';
 
 @ApiTags('AI Agent')
 @ApiBearerAuth()
@@ -36,38 +37,17 @@ export class AiAgentController {
     },
   })
   @ApiOperation({
-    summary: 'Generate questions for a category using the configured AI provider',
+    operationId: 'aiGenerateQuestions',
+    summary:
+      'Generate questions for a category using the configured AI provider',
     description:
       'Generates open-answer questions for a selected category. ' +
       'Questions are saved as drafts and must be reviewed/approved by admin before use in games.',
   })
   @ApiResponse({
     status: 200,
+    type: GenerateQuestionsResponseDto,
     description: 'Questions generated and saved as drafts successfully',
-    schema: {
-      example: {
-        statusCode: 200,
-        message: 'Questions generated successfully',
-        count: 6,
-        data: [
-          {
-            _id: '507f1f77bcf86cd799439011',
-            category: '507f1f77bcf86cd799439012',
-            question: 'What is the largest planet in our solar system?',
-            answer: 'Jupiter',
-            explanation:
-              'Jupiter is the largest planet with a mass twice that of all others combined.',
-            difficulty: 'easy',
-            points: 200,
-            type: 'text',
-            status: 'draft',
-            source: 'ai',
-            createdAt: '2024-06-19T10:00:00Z',
-            updatedAt: '2024-06-19T10:00:00Z',
-          },
-        ],
-      },
-    },
   })
   @ApiResponse({
     status: 400,
@@ -75,7 +55,8 @@ export class AiAgentController {
   })
   @ApiResponse({
     status: 500,
-    description: 'Internal server error - AI provider API error or other issues',
+    description:
+      'Internal server error - AI provider API error or other issues',
   })
   async generateQuestions(@Body() generateQuestionsDto: GenerateQuestionsDto) {
     const result =

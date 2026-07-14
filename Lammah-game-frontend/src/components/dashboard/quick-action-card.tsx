@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { LucideIcon } from 'lucide-react';
-import { DashboardCard } from './dashboard-card';
+import { LucideIcon } from "lucide-react";
+import { DashboardCard } from "./dashboard-card";
 
 interface QuickActionCardProps {
   title: string;

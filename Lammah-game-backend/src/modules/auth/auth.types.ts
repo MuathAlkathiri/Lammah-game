@@ -16,3 +16,4 @@ export interface AuthUserResponse {
   subscriptionExpiresAt?: Date;
 }
 
+export type AuthenticatedUser = AuthUserResponse;

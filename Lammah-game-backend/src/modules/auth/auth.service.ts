@@ -4,117 +4,72 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
-import { AuthUserResponse, JwtPayload } from './auth.types';
+import { UserRole } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
-import { User, UserRole } from '../users/schemas/user.schema';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { JwtTokenProvider } from './infrastructure/jwt-token.provider';
+import { PasswordHasherService } from './infrastructure/password-hasher.service';
+import { mapUserResponse } from '../users/mappers/user-response.mapper';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
   constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    private readonly users: UsersService,
+    private readonly tokens: JwtTokenProvider,
+    private readonly passwords: PasswordHasherService,
+    private readonly config: ConfigService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     await this.seedAdmin();
   }
 
-  async register(registerDto: RegisterDto): Promise<{
-    accessToken: string;
-    user: AuthUserResponse;
-  }> {
-    const password = await bcrypt.hash(registerDto.password, 10);
-    const user = await this.usersService.create({
-      fullName: registerDto.fullName,
-      email: registerDto.email,
-      password,
+  async register(dto: RegisterDto): Promise<AuthResponseDto> {
+    const user = await this.users.create({
+      fullName: dto.fullName,
+      email: dto.email,
+      password: await this.passwords.hash(dto.password),
       role: UserRole.USER,
     });
-
     return this.buildAuthResponse(user);
   }
 
-  async login(loginDto: LoginDto): Promise<{
-    accessToken: string;
-    user: AuthUserResponse;
-  }> {
-    const user = await this.usersService.findByEmail(loginDto.email);
-
-    if (!user) {
+  async login(dto: LoginDto): Promise<AuthResponseDto> {
+    const user = await this.users.findByEmailForAuthentication(dto.email);
+    if (!user || !(await this.passwords.compare(dto.password, user.password))) {
       throw new UnauthorizedException('Invalid email or password');
     }
-
-    const passwordMatches = await bcrypt.compare(
-      loginDto.password,
-      user.password,
-    );
-
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
     return this.buildAuthResponse(user);
   }
 
-  async me(userId: string): Promise<AuthUserResponse> {
-    const user = await this.usersService.findById(userId);
-    return this.toAuthUserResponse(user);
+  async me(userId: string) {
+    return mapUserResponse(await this.users.findById(userId));
   }
 
   private async seedAdmin(): Promise<void> {
-    const email = this.configService.get<string>('ADMIN_EMAIL');
-    const password = this.configService.get<string>('ADMIN_PASSWORD');
-    const fullName =
-      this.configService.get<string>('ADMIN_FULL_NAME') ?? 'Admin';
-
-    if (!email || !password) {
-      return;
-    }
-
-    const existingAdmin = await this.usersService.findByEmail(email);
-
-    if (existingAdmin) {
-      return;
-    }
-
-    await this.usersService.create({
-      fullName,
+    const email = this.config.get<string>('ADMIN_EMAIL');
+    const password = this.config.get<string>('ADMIN_PASSWORD');
+    if (!email || !password) return;
+    if (await this.users.findByEmailForAuthentication(email)) return;
+    await this.users.create({
+      fullName: this.config.get<string>('ADMIN_FULL_NAME') ?? 'Admin',
       email,
-      password: await bcrypt.hash(password, 10),
+      password: await this.passwords.hash(password),
       role: UserRole.ADMIN,
     });
   }
 
-  private buildAuthResponse(user: User): {
-    accessToken: string;
-    user: AuthUserResponse;
-  } {
-    const payload: JwtPayload = {
-      sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
-    };
-
+  private buildAuthResponse(
+    user: Awaited<ReturnType<UsersService['create']>>,
+  ): AuthResponseDto {
     return {
-      accessToken: this.jwtService.sign(payload),
-      user: this.toAuthUserResponse(user),
-    };
-  }
-
-  private toAuthUserResponse(user: User): AuthUserResponse {
-    return {
-      id: user._id.toString(),
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
-      subscriptionStatus: user.subscriptionStatus,
-      freeGamesUsed: user.freeGamesUsed,
-      subscriptionExpiresAt: user.subscriptionExpiresAt,
+      accessToken: this.tokens.sign({
+        sub: user._id.toString(),
+        email: user.email,
+        role: user.role,
+      }),
+      user: mapUserResponse(user),
     };
   }
 }
-

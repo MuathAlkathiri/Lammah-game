@@ -30,6 +30,12 @@ import {
   ValidateMusicQuestionAnswerDto,
 } from './dto/music.dto';
 import { MusicService } from './music.service';
+import { UploadedAudioFile } from '../../common/uploads/local-audio-storage.service';
+import {
+  MusicAnswerValidationResponseDto,
+  MusicTrackDetailResponseDto,
+  MusicTrackListResponseDto,
+} from './dto/music-track-response.dto';
 
 @ApiTags('Admin Music Tracks')
 @ApiBearerAuth()
@@ -48,6 +54,7 @@ export class AdminMusicTracksController {
     }),
   )
   @ApiOperation({
+    operationId: 'musicTracksUpload',
     summary: 'Upload an audio file and create a guess-the-song question',
   })
   @ApiConsumes('multipart/form-data')
@@ -71,8 +78,12 @@ export class AdminMusicTracksController {
   @ApiResponse({
     status: 201,
     description: 'Music track and question created',
+    type: MusicTrackDetailResponseDto,
   })
-  async upload(@UploadedFile() file: any, @Body() body: UploadMusicTrackDto) {
+  async upload(
+    @UploadedFile() file: UploadedAudioFile | undefined,
+    @Body() body: UploadMusicTrackDto,
+  ) {
     const data = await this.musicService.createFromUpload(file, body);
 
     return {
@@ -82,7 +93,11 @@ export class AdminMusicTracksController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List uploaded music tracks' })
+  @ApiOperation({
+    operationId: 'musicTracksList',
+    summary: 'List uploaded music tracks',
+  })
+  @ApiResponse({ status: 200, type: MusicTrackListResponseDto })
   async findAll() {
     const data = await this.musicService.findAll();
 
@@ -93,7 +108,11 @@ export class AdminMusicTracksController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one uploaded music track' })
+  @ApiOperation({
+    operationId: 'musicTracksGetById',
+    summary: 'Get one uploaded music track',
+  })
+  @ApiResponse({ status: 200, type: MusicTrackDetailResponseDto })
   async findOne(@Param('id') id: string) {
     const data = await this.musicService.findById(id);
 
@@ -104,7 +123,11 @@ export class AdminMusicTracksController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update music track metadata' })
+  @ApiOperation({
+    operationId: 'musicTracksUpdate',
+    summary: 'Update music track metadata',
+  })
+  @ApiResponse({ status: 200, type: MusicTrackDetailResponseDto })
   async update(@Param('id') id: string, @Body() body: UpdateMusicTrackDto) {
     const data = await this.musicService.update(id, body);
 
@@ -115,7 +138,11 @@ export class AdminMusicTracksController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft-delete a music track' })
+  @ApiOperation({
+    operationId: 'musicTracksDelete',
+    summary: 'Soft-delete a music track',
+  })
+  @ApiResponse({ status: 200, type: MusicTrackDetailResponseDto })
   async remove(@Param('id') id: string) {
     const data = await this.musicService.softDelete(id);
 
@@ -132,7 +159,10 @@ export class MusicQuestionsController {
   constructor(private readonly musicService: MusicService) {}
 
   @Post('validate-answer')
-  @ApiOperation({ summary: 'Validate a typed answer for a music question' })
+  @ApiOperation({
+    operationId: 'musicValidateAnswer',
+    summary: 'Validate a typed answer for a music question',
+  })
   @ApiBody({
     type: ValidateMusicQuestionAnswerDto,
     examples: {
@@ -147,6 +177,7 @@ export class MusicQuestionsController {
   @ApiResponse({
     status: 201,
     description: 'Answer validation result',
+    type: MusicAnswerValidationResponseDto,
   })
   async validateMusicQuestionAnswer(
     @Body() body: ValidateMusicQuestionAnswerDto,

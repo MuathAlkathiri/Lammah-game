@@ -14,6 +14,8 @@ import {
   CurrentUser,
 } from '../../common/decorators/current-user.decorator';
 import { userExample } from '../../common/swagger/examples';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -21,7 +23,10 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register a new normal user' })
+  @ApiOperation({
+    operationId: 'authRegister',
+    summary: 'Register a new normal user',
+  })
   @ApiBody({
     type: RegisterDto,
     examples: {
@@ -38,6 +43,7 @@ export class AuthController {
   @ApiResponse({
     status: 201,
     description: 'User registered successfully',
+    type: AuthResponseDto,
     schema: {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -61,7 +67,10 @@ export class AuthController {
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Login and receive a JWT access token' })
+  @ApiOperation({
+    operationId: 'authLogin',
+    summary: 'Login and receive a JWT access token',
+  })
   @ApiBody({
     type: LoginDto,
     examples: {
@@ -77,6 +86,7 @@ export class AuthController {
   @ApiResponse({
     status: 201,
     description: 'Login successful',
+    type: AuthResponseDto,
     schema: {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -102,10 +112,14 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get the current authenticated user' })
+  @ApiOperation({
+    operationId: 'authGetCurrentUser',
+    summary: 'Get the current authenticated user',
+  })
   @ApiResponse({
     status: 200,
     description: 'Current user returned successfully',
+    type: UserResponseDto,
     schema: {
       example: userExample,
     },

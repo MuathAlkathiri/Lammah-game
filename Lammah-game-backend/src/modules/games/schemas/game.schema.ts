@@ -32,7 +32,7 @@ export interface CategoryBoard {
   questions: QuestionInGame[];
 }
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, optimisticConcurrency: true })
 export class Game extends Document {
   @Prop({ required: true })
   name: string;

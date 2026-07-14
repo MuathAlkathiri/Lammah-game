@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { LucideIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface StatsCardProps {
   label: string;
@@ -11,11 +11,17 @@ interface StatsCardProps {
   className?: string;
 }
 
-export function StatsCard({ label, value, icon: Icon, helper, className }: StatsCardProps) {
+export function StatsCard({
+  label,
+  value,
+  icon: Icon,
+  helper,
+  className,
+}: StatsCardProps) {
   return (
     <div
       className={cn(
-        'glass-panel rounded-2xl p-5 transition duration-300 hover:-translate-y-0.5 hover:border-primary/35',
+        "glass-panel rounded-2xl p-5 transition duration-300 hover:-translate-y-0.5 hover:border-primary/35",
         className,
       )}
     >
@@ -28,7 +34,11 @@ export function StatsCard({ label, value, icon: Icon, helper, className }: Stats
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
       </div>
-      {helper && <p className="mt-4 text-xs font-semibold text-muted-foreground">{helper}</p>}
+      {helper && (
+        <p className="mt-4 text-xs font-semibold text-muted-foreground">
+          {helper}
+        </p>
+      )}
     </div>
   );
 }

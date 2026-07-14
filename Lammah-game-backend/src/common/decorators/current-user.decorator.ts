@@ -1,15 +1,6 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { UserRole, SubscriptionStatus } from '../../modules/users/schemas/user.schema';
-
-export interface AuthenticatedUser {
-  id: string;
-  fullName: string;
-  email: string;
-  role: UserRole;
-  freeGamesUsed: number;
-  subscriptionStatus: SubscriptionStatus;
-  subscriptionExpiresAt?: Date;
-}
+export { AuthenticatedUser } from '../../modules/auth/auth.types';
+import { AuthenticatedUser } from '../../modules/auth/auth.types';
 
 export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthenticatedUser => {
@@ -17,4 +8,3 @@ export const CurrentUser = createParamDecorator(
     return request.user;
   },
 );
-

@@ -34,7 +34,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg yt-dlp
 
 ENV NODE_ENV=production
 ENV NODE_PATH=/app/Lammah-game-backend/node_modules:/app/node_modules

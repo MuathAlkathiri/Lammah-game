@@ -13,7 +13,22 @@
     "build:frontend": "npm run build --workspace Lammah-game-frontend",
     "dev:backend": "npm run start:dev --workspace Lammah-game-backend",
     "dev:frontend": "npm run dev --workspace Lammah-game-frontend",
-    "lint": "npm run lint --workspace Lammah-game-frontend",
-    "test": "npm run test --workspace Lammah-game-backend -- --passWithNoTests"
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "lint:frontend": "npm run lint --workspace Lammah-game-frontend",
+    "lint:backend": "npm run lint:check --workspace Lammah-game-backend",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "npm run test --workspace Lammah-game-frontend",
+    "test:frontend:watch": "npm run test:watch --workspace Lammah-game-frontend",
+    "test:backend": "npm run test --workspace Lammah-game-backend -- --passWithNoTests",
+    "test:e2e": "npm run test:e2e --workspace Lammah-game-frontend",
+    "test:e2e:ui": "npm run test:e2e:ui --workspace Lammah-game-frontend",
+    "api:openapi": "npm run api:openapi --workspace Lammah-game-backend",
+    "api:validate": "npm run api:validate --workspace Lammah-game-backend",
+    "api:check": "npm run api:check --workspace Lammah-game-backend",
+    "api:generate": "npm run api:generate --workspace Lammah-game-frontend",
+    "api:generate:check": "npm run api:generate:check --workspace Lammah-game-frontend",
+    "api:migration:check": "npm run api:migration:check --workspace Lammah-game-frontend",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run api:check && npm run api:generate:check && npm run api:migration:check && npm run build"
   }
 }

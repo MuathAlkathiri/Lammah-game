@@ -3,15 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { User, UserRole, SubscriptionStatus } from './schemas/user.schema';
-
-export type SafeUser = Omit<User, 'password'>;
+import { Types } from 'mongoose';
+import { mapUserResponse } from './mappers/user-response.mapper';
+import { UserRepository } from './persistence/user.repository';
+import { SubscriptionStatus, User, UserRole } from './schemas/user.schema';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  constructor(private readonly users: UserRepository) {}
 
   async create(data: {
     fullName: string;
@@ -19,70 +18,73 @@ export class UsersService {
     password: string;
     role?: UserRole;
   }): Promise<User> {
-    const email = data.email.toLowerCase().trim();
-    const existingUser = await this.userModel.findOne({ email }).exec();
-
-    if (existingUser) {
+    const email = this.normalizeEmail(data.email);
+    if (await this.users.findByEmailWithPassword(email)) {
       throw new ConflictException('Email is already registered');
     }
-
-    return this.userModel.create({
-      ...data,
-      email,
-      role: data.role ?? UserRole.USER,
-    });
+    try {
+      return await this.users.create({
+        ...data,
+        email,
+        role: data.role ?? UserRole.USER,
+      });
+    } catch (error) {
+      if (isDuplicateKey(error)) {
+        throw new ConflictException('Email is already registered');
+      }
+      throw error;
+    }
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userModel
-      .findOne({ email: email.toLowerCase().trim() })
-      .select('+password')
-      .exec();
+  findByEmailForAuthentication(email: string) {
+    return this.users.findByEmailWithPassword(this.normalizeEmail(email));
   }
 
   async findById(id: string | Types.ObjectId): Promise<User> {
-    const user = await this.userModel.findById(id).exec();
-
-    if (!user) {
-      throw new NotFoundException(`User with ID "${id}" not found`);
-    }
-
+    const user = await this.users.findById(id);
+    if (!user) throw new NotFoundException(`User with ID "${id}" not found`);
     return user;
   }
 
-  async findByIdWithPassword(id: string | Types.ObjectId): Promise<User | null> {
-    return this.userModel.findById(id).select('+password').exec();
+  findByIdWithPassword(id: string | Types.ObjectId) {
+    return this.users.findByIdWithPassword(id);
+  }
+
+  async findAll() {
+    return (await this.users.findAll()).map(mapUserResponse);
   }
 
   async incrementFreeGamesUsed(id: string | Types.ObjectId): Promise<void> {
-    await this.userModel
-      .findByIdAndUpdate(id, {
-        $inc: { freeGamesUsed: 1 },
-        updatedAt: new Date(),
-      })
-      .exec();
+    await this.users.updateById(id, {
+      $inc: { freeGamesUsed: 1 },
+      updatedAt: new Date(),
+    });
   }
 
   async updateSubscription(
     id: string,
     subscriptionStatus: SubscriptionStatus,
     subscriptionExpiresAt?: Date,
-  ): Promise<User> {
-    const updateData: Partial<User> = {
+  ) {
+    const user = await this.users.updateById(id, {
       subscriptionStatus,
       subscriptionExpiresAt,
       updatedAt: new Date(),
-    };
+    });
+    if (!user) throw new NotFoundException(`User with ID "${id}" not found`);
+    return mapUserResponse(user);
+  }
 
-    const user = await this.userModel
-      .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
-      .exec();
-
-    if (!user) {
-      throw new NotFoundException(`User with ID "${id}" not found`);
-    }
-
-    return user;
+  private normalizeEmail(email: string) {
+    return email.toLowerCase().trim();
   }
 }
 
+function isDuplicateKey(error: unknown): error is { code: number } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 11000
+  );
+}

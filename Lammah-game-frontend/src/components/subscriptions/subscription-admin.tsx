@@ -1,50 +1,60 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { useUpdateSubscription, useUsers } from '@/lib/hooks';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { useUpdateSubscription, useUsers } from "@/features/users";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 
 const schema = z.object({
-  userId: z.string().min(1, 'معرّف المستخدم مطلوب'),
-  subscriptionStatus: z.enum(['none', 'active', 'expired']),
+  userId: z.string().min(1, "معرّف المستخدم مطلوب"),
+  subscriptionStatus: z.enum(["none", "active", "expired"]),
   subscriptionExpiresAt: z.string().optional(),
 });
 
 type SubscriptionFormData = z.infer<typeof schema>;
 
 export function SubscriptionAdmin() {
-  const { data: usersData, isLoading: usersLoading, error: usersError } = useUsers();
+  const {
+    data: usersData,
+    isLoading: usersLoading,
+    error: usersError,
+  } = useUsers();
   const updateSubscription = useUpdateSubscription();
-  const [message, setMessage] = useState('');
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<SubscriptionFormData>({
+  const [message, setMessage] = useState("");
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<SubscriptionFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      subscriptionStatus: 'active',
+      subscriptionStatus: "active",
     },
   });
 
   const users = usersData || [];
-  const status = watch('subscriptionStatus');
+  const status = watch("subscriptionStatus");
 
   const onSubmit = async (data: SubscriptionFormData) => {
-    setMessage('');
+    setMessage("");
     try {
       await updateSubscription.mutateAsync(data);
-      setMessage('تم تحديث الاشتراك بنجاح');
+      setMessage("تم تحديث الاشتراك بنجاح");
     } catch {
-      setMessage('تعذر تحديث الاشتراك. تأكد من دعم endpoint في backend.');
+      setMessage("تعذر تحديث الاشتراك. تأكد من دعم endpoint في backend.");
     }
   };
 
@@ -58,15 +68,26 @@ export function SubscriptionAdmin() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">User ID</label>
-              <Input {...register('userId')} />
-              {errors.userId && <p className="text-sm text-destructive mt-1">{errors.userId.message}</p>}
+              <Input {...register("userId")} />
+              {errors.userId && (
+                <p className="text-sm text-destructive mt-1">
+                  {errors.userId.message}
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">حالة الاشتراك</label>
+              <label className="block text-sm font-medium mb-2">
+                حالة الاشتراك
+              </label>
               <Select
                 value={status}
-                onValueChange={(value) => setValue('subscriptionStatus', value as SubscriptionFormData['subscriptionStatus'])}
+                onValueChange={(value) =>
+                  setValue(
+                    "subscriptionStatus",
+                    value as SubscriptionFormData["subscriptionStatus"],
+                  )
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="اختر الحالة" />
@@ -80,14 +101,18 @@ export function SubscriptionAdmin() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">تاريخ الانتهاء</label>
-              <Input type="date" {...register('subscriptionExpiresAt')} />
+              <label className="block text-sm font-medium mb-2">
+                تاريخ الانتهاء
+              </label>
+              <Input type="date" {...register("subscriptionExpiresAt")} />
             </div>
 
-            {message && <p className="text-sm text-muted-foreground">{message}</p>}
+            {message && (
+              <p className="text-sm text-muted-foreground">{message}</p>
+            )}
 
             <Button type="submit" disabled={updateSubscription.isPending}>
-              {updateSubscription.isPending ? 'جاري الحفظ...' : 'حفظ الاشتراك'}
+              {updateSubscription.isPending ? "جاري الحفظ..." : "حفظ الاشتراك"}
             </Button>
           </form>
         </CardContent>
@@ -98,19 +123,27 @@ export function SubscriptionAdmin() {
           <CardTitle>المستخدمون</CardTitle>
         </CardHeader>
         <CardContent>
-          {usersLoading && <p className="text-muted-foreground">جاري تحميل المستخدمين...</p>}
-          {usersError && (
+          {usersLoading && (
+            <p className="text-muted-foreground">جاري تحميل المستخدمين...</p>
+          )}
+          {Boolean(usersError) && (
             <p className="text-sm text-muted-foreground">
-              قائمة المستخدمين جاهزة في الواجهة، لكن endpoint المستخدمين غير متاح أو رفض الطلب.
+              قائمة المستخدمين جاهزة في الواجهة، لكن endpoint المستخدمين غير
+              متاح أو رفض الطلب.
             </p>
           )}
           {!!users.length && (
             <div className="space-y-3">
               {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between border border-border rounded-md p-3">
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between border border-border rounded-md p-3"
+                >
                   <div>
                     <p className="font-medium">{user.fullName}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {user.email}
+                    </p>
                     <p className="text-xs text-muted-foreground">{user.id}</p>
                   </div>
                   <div className="text-sm text-muted-foreground">

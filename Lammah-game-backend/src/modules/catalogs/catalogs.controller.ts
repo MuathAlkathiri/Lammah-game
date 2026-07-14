@@ -23,8 +23,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { plainToInstance } from 'class-transformer';
-import { validateSync } from 'class-validator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -37,6 +35,13 @@ import {
   UpdateCatalogDto,
 } from './dto/catalog.dto';
 import { Catalog } from './schemas/catalog.schema';
+import { CatalogResponseMapper } from './mappers/catalog-response.mapper';
+import {
+  CatalogDetailResponseDto,
+  CatalogListResponseDto,
+  CatalogMutationResponseDto,
+} from './dto/catalog-response.dto';
+import { parseMultipartJsonBody } from '../../common/pipes/multipart-json-body.parser';
 
 interface UploadedBannerFile {
   originalname: string;
@@ -52,7 +57,9 @@ const catalogBannerUploadInterceptor = FileInterceptor('banner', {
   fileFilter: (_request, file, callback) => {
     if (!/^image\/(jpe?g|png|webp)$/.test(file.mimetype)) {
       callback(
-        new BadRequestException('Banner must be a jpg, jpeg, png, or webp image'),
+        new BadRequestException(
+          'Banner must be a jpg, jpeg, png, or webp image',
+        ),
         false,
       );
       return;
@@ -68,30 +75,43 @@ export class CatalogsController {
   constructor(private readonly catalogsService: CatalogsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all catalogs' })
+  @ApiOperation({ operationId: 'catalogsList', summary: 'Get all catalogs' })
   @ApiResponse({
     status: 200,
     description: 'Catalogs retrieved successfully',
+    type: CatalogListResponseDto,
     schema: { example: { statusCode: 200, data: [catalogExample] } },
   })
   async findAll(): Promise<{ statusCode: number; data: Catalog[] }> {
     const catalogs = await this.catalogsService.findAll();
-    return { statusCode: HttpStatus.OK, data: catalogs };
+    return {
+      statusCode: HttpStatus.OK,
+      data: CatalogResponseMapper.toResponseList(
+        catalogs,
+      ) as unknown as Catalog[],
+    };
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a specific catalog by ID' })
+  @ApiOperation({
+    operationId: 'catalogsGetById',
+    summary: 'Get a specific catalog by ID',
+  })
   @ApiParam({ name: 'id', example: ids.catalog })
   @ApiResponse({
     status: 200,
     description: 'Catalog retrieved successfully',
+    type: CatalogDetailResponseDto,
     schema: { example: { statusCode: 200, data: catalogExample } },
   })
   async findById(
     @Param('id') id: string,
   ): Promise<{ statusCode: number; data: Catalog }> {
     const catalog = await this.catalogsService.findById(id);
-    return { statusCode: HttpStatus.OK, data: catalog };
+    return {
+      statusCode: HttpStatus.OK,
+      data: CatalogResponseMapper.toResponse(catalog) as unknown as Catalog,
+    };
   }
 
   @Post()
@@ -100,8 +120,11 @@ export class CatalogsController {
   @UseInterceptors(catalogBannerUploadInterceptor)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new catalog' })
-  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({
+    operationId: 'catalogsCreate',
+    summary: 'Create a new catalog',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiBody({
     type: CatalogMultipartBodyDto,
     examples: {
@@ -123,16 +146,17 @@ export class CatalogsController {
       },
     },
   })
+  @ApiResponse({ status: 201, type: CatalogMutationResponseDto })
   async create(
     @Body() body: Record<string, unknown>,
     @UploadedFile() banner?: UploadedBannerFile,
   ): Promise<{ statusCode: number; message: string; data: Catalog }> {
-    const dto = this.parseAndValidateCatalogBody(body, CreateCatalogDto);
+    const dto = parseMultipartJsonBody(body, 'catalog', CreateCatalogDto);
     const catalog = await this.catalogsService.create(dto, banner);
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Catalog created successfully',
-      data: catalog,
+      data: CatalogResponseMapper.toResponse(catalog) as unknown as Catalog,
     };
   }
 
@@ -141,21 +165,22 @@ export class CatalogsController {
   @Roles(UserRole.ADMIN)
   @UseInterceptors(catalogBannerUploadInterceptor)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a catalog' })
-  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiOperation({ operationId: 'catalogsUpdate', summary: 'Update a catalog' })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiParam({ name: 'id', example: ids.catalog })
   @ApiBody({ type: CatalogMultipartBodyDto })
+  @ApiResponse({ status: 200, type: CatalogMutationResponseDto })
   async update(
     @Param('id') id: string,
     @Body() body: Record<string, unknown>,
     @UploadedFile() banner?: UploadedBannerFile,
   ): Promise<{ statusCode: number; message: string; data: Catalog }> {
-    const dto = this.parseAndValidateCatalogBody(body, UpdateCatalogDto);
+    const dto = parseMultipartJsonBody(body, 'catalog', UpdateCatalogDto);
     const catalog = await this.catalogsService.update(id, dto, banner);
     return {
       statusCode: HttpStatus.OK,
       message: 'Catalog updated successfully',
-      data: catalog,
+      data: CatalogResponseMapper.toResponse(catalog) as unknown as Catalog,
     };
   }
 
@@ -164,7 +189,7 @@ export class CatalogsController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a catalog' })
+  @ApiOperation({ operationId: 'catalogsDelete', summary: 'Delete a catalog' })
   @ApiParam({ name: 'id', example: ids.catalog })
   @ApiResponse({ status: 204, description: 'Catalog deleted successfully' })
   @ApiResponse({
@@ -173,41 +198,5 @@ export class CatalogsController {
   })
   async delete(@Param('id') id: string): Promise<void> {
     await this.catalogsService.delete(id);
-  }
-
-  private parseAndValidateCatalogBody<T extends object>(
-    body: Record<string, unknown>,
-    DtoClass: new () => T,
-  ): T {
-    const rawCatalog = body.catalog;
-    let payload: unknown = body;
-
-    if (rawCatalog !== undefined) {
-      if (typeof rawCatalog !== 'string') {
-        throw new BadRequestException('catalog must be a JSON string');
-      }
-
-      try {
-        payload = JSON.parse(rawCatalog);
-      } catch {
-        throw new BadRequestException('catalog must be valid JSON');
-      }
-    }
-
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new BadRequestException('catalog payload must be an object');
-    }
-
-    const dto = plainToInstance(DtoClass, payload);
-    const validationErrors = validateSync(dto, {
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    });
-
-    if (validationErrors.length) {
-      throw new BadRequestException(validationErrors);
-    }
-
-    return dto;
   }
 }

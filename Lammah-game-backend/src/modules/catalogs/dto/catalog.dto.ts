@@ -109,7 +109,8 @@ export class UpdateCatalogDto {
 
 export class CatalogMultipartBodyDto {
   @ApiProperty({
-    description: 'JSON string containing CreateCatalogDto or UpdateCatalogDto fields',
+    description:
+      'JSON string containing CreateCatalogDto or UpdateCatalogDto fields',
     example: JSON.stringify({
       name: { ar: 'رياضة', en: 'Sports' },
       description: {

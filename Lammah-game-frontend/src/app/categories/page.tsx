@@ -1,17 +1,16 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { RequireAdmin } from '@/components/auth/require-admin';
-import { CategoryForm } from '@/components/categories/category-form';
-import { CategoriesList } from '@/components/categories/categories-list';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { RequireAdmin } from "@/components/auth/require-admin";
+import { CategoryForm, CategoriesList } from "@/features/categories";
 
 export default function CategoriesPage() {
   const [open, setOpen] = useState(false);
