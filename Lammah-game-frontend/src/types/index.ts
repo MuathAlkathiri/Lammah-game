@@ -161,6 +161,10 @@ export interface AssetRequest {
   context?: string;
   duration?: number;
   speaker?: string;
+  title?: string;
+  artist?: string;
+  aliases?: string[];
+  artistAliases?: string[];
   [key: string]: unknown;
 }
 

@@ -27,6 +27,56 @@ import {
 import type { ReviewedQuestionDraft } from "../types/ai-generation.types";
 import { getEntityId } from "@/lib/utils";
 import { getMediaUrl } from "@/lib/api/media-url";
+import { Input } from "@/components/ui/input";
+import {
+  AI_GENERATION_DEFAULTS,
+  AI_GENERATION_DIFFICULTIES,
+  AI_GENERATION_MAX_COUNT,
+  aiGenerationFormSchema,
+  type AIGenerationFormValues,
+} from "../models/ai-generation-form";
+
+const WORDING_ISSUE_LABELS: Record<string, string> = {
+  QUESTION_TOO_LONG: "السؤال أطول من المناسب للعب",
+  QUESTION_MULTIPLE_IDEAS: "السؤال يحتوي أكثر من فكرة",
+  QUESTION_ACADEMIC_STYLE: "صياغة أكاديمية",
+  QUESTION_CONTAINS_EXPLANATION: "يتضمن شرحًا داخل السؤال",
+  QUESTION_CONTAINS_PARENTHESES: "يتضمن تفاصيل بين قوسين",
+  QUESTION_VAGUE: "السؤال مختصر أو مبهم",
+  QUESTION_ANSWER_LEAKAGE: "قد يكشف الإجابة",
+};
+
+const VOICE_ASSET_FAILURE_LABELS: Record<string, string> = {
+  VOICE_NO_SPEECH_WINDOW:
+    "تم العثور على فيديو مرتبط بالشخصية، لكن لم يتم العثور على جزء صوتي واضح.",
+  VOICE_MUSIC_DOMINANT_WINDOWS:
+    "تم رفض النتائج لأنها تحتوي موسيقى أو مونتاج بدل حوار.",
+  VOICE_ALL_WINDOWS_SILENT: "تم تجربة عدة مقاطع ولم يتم العثور على كلام مناسب.",
+  VOICE_CLIP_EXTRACTION_FAILED: "فشل استخراج المقطع الصوتي.",
+  VOICE_NO_VALID_VIDEO_AFTER_SEARCH:
+    "لم يظهر مقطع صوتي واضح ومرتبط بالشخصية في نتائج البحث.",
+  VOICE_VIDEO_MUSIC_METADATA:
+    "تم رفض النتائج لأنها تحتوي موسيقى أو مونتاج بدل حوار.",
+  VOICE_ENTITY_EVIDENCE_MISSING: "لم يظهر اسم الشخصية بوضوح في نتائج البحث.",
+  MUSIC_TITLE_REQUIRED: "عنوان الأغنية مطلوب.",
+  MUSIC_ARTIST_REQUIRED: "اسم الفنان مطلوب للتحقق من الأغنية.",
+  MUSIC_SONG_NOT_VERIFIED: "الأغنية غير موجودة في مصدر المعرفة الموثوق.",
+  MUSIC_NO_VALID_YOUTUBE_ASSET:
+    "لم يتم العثور على مقطع يطابق عنوان الأغنية والفنان.",
+  MUSIC_TITLE_ARTIST_MISMATCH: "تم رفض نتيجة لا تطابق الأغنية والفنان معًا.",
+  MUSIC_NO_VALID_WINDOW: "لم يتم العثور على جزء موسيقي واضح داخل المقطع.",
+};
+
+const localizedAssetFailure = (diagnostics: unknown, fallback?: string) => {
+  const serialized = JSON.stringify(diagnostics ?? {});
+  const code = Object.keys(VOICE_ASSET_FAILURE_LABELS).find((candidate) =>
+    serialized.includes(candidate),
+  );
+  return (code && VOICE_ASSET_FAILURE_LABELS[code]) || fallback;
+};
+
+const countQuestionWords = (value: string) =>
+  value.trim().match(/[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*/gu)?.length ?? 0;
 
 export function AIGenerator() {
   const { data: categoriesData, isLoading: categoriesLoading } =
@@ -34,6 +84,10 @@ export function AIGenerator() {
   const generateQuestions = useGenerateReviewedQuestions();
   const saveDrafts = useSaveReviewedDrafts();
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [settings, setSettings] = useState<AIGenerationFormValues>(
+    AI_GENERATION_DEFAULTS,
+  );
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<
     ReviewedQuestionDraft[]
   >([]);
@@ -56,6 +110,7 @@ export function AIGenerator() {
       ? saveBackendMessage.join("، ")
       : saveBackendMessage || "تعذر حفظ المسودات. حاول مجددًا."
     : null;
+  const settingsValid = aiGenerationFormSchema.safeParse(settings).success;
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (generatedQuestions.length > saved.size) event.preventDefault();
@@ -66,11 +121,19 @@ export function AIGenerator() {
 
   const handleGenerate = async () => {
     if (!selectedCategory) return;
+    const parsedSettings = aiGenerationFormSchema.safeParse(settings);
+    if (!parsedSettings.success) {
+      setSettingsError(
+        parsedSettings.error.issues[0]?.message ?? "تحقق من إعدادات التوليد",
+      );
+      return;
+    }
+    setSettingsError(null);
 
     try {
       const result = await generateQuestions.mutateAsync({
         categoryId: selectedCategory,
-        count: 2,
+        ...parsedSettings.data,
       });
       setGeneratedQuestions(result.data.questions || []);
       setSelected(
@@ -120,12 +183,18 @@ export function AIGenerator() {
             <p className="mt-1">الخطوة: {question.assetFailureStep}</p>
           )}
           <p className="mt-1 break-words">
-            {question.assetFailureReason || "لم يتم إرجاع سبب الفشل."}
+            {localizedAssetFailure(
+              question.assetFailureDiagnostics,
+              question.assetFailureReason || "لم يتم إرجاع سبب الفشل.",
+            )}
           </p>
           {question.assetFailureDiagnostics && (
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-background/60 p-2 text-xs text-foreground">
-              {JSON.stringify(question.assetFailureDiagnostics, null, 2)}
-            </pre>
+            <details className="mt-2 text-xs text-foreground">
+              <summary className="cursor-pointer">التفاصيل التقنية</summary>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-background/60 p-2">
+                {JSON.stringify(question.assetFailureDiagnostics, null, 2)}
+              </pre>
+            </details>
           )}
         </div>
       );
@@ -191,7 +260,7 @@ export function AIGenerator() {
               onValueChange={setSelectedCategory}
               disabled={categoriesLoading}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="الفئة">
                 <SelectValue
                   placeholder={
                     categoriesLoading ? "جاري تحميل الفئات..." : "اختر فئة"
@@ -211,13 +280,78 @@ export function AIGenerator() {
             </Select>
           </div>
 
+          <fieldset className="rounded-2xl border border-primary/20 bg-background/40 p-4">
+            <legend className="px-2 text-sm font-bold">إعدادات التوليد</legend>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="ai-question-count"
+                  className="mb-2 block text-sm font-medium"
+                >
+                  عدد الأسئلة
+                </label>
+                <Input
+                  id="ai-question-count"
+                  type="number"
+                  min={1}
+                  max={AI_GENERATION_MAX_COUNT}
+                  step={1}
+                  required
+                  value={settings.count}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      count: event.target.valueAsNumber,
+                    }))
+                  }
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  يحدد عدد المسودات التي سينشئها الذكاء الاصطناعي.
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  الصعوبة
+                </label>
+                <Select
+                  value={settings.difficulty}
+                  onValueChange={(difficulty) =>
+                    setSettings((current) => ({
+                      ...current,
+                      difficulty:
+                        difficulty as AIGenerationFormValues["difficulty"],
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label="الصعوبة">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_GENERATION_DIFFICULTIES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {settingsError && (
+              <p className="mt-3 text-sm text-destructive">{settingsError}</p>
+            )}
+          </fieldset>
+
           <Button
             size="lg"
             onClick={handleGenerate}
-            disabled={!selectedCategory || generateQuestions.isPending}
+            disabled={
+              !selectedCategory || !settingsValid || generateQuestions.isPending
+            }
             className="w-full"
           >
-            {generateQuestions.isPending ? "جاري التوليد..." : "توليد أسئلة"}
+            {generateQuestions.isPending
+              ? "جاري التوليد..."
+              : `توليد ${settingsValid ? settings.count : ""} أسئلة`}
           </Button>
 
           {generationErrorMessage && (
@@ -332,6 +466,11 @@ export function AIGenerator() {
                           {question.correctAnswer}
                         </span>
                       </p>
+                      {question.musicMetadata && (
+                        <p className="text-sm text-muted-foreground">
+                          الفنان: {question.musicMetadata.artist}
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline">{question.gameMode}</Badge>
                         <Badge variant="secondary">{question.type}</Badge>
@@ -366,6 +505,23 @@ export function AIGenerator() {
                             تم تعديل النوع تلقائيًا
                           </Badge>
                         )}
+                        {question.issues.some(
+                          (issue) =>
+                            issue.startsWith("QUESTION_") &&
+                            issue !== "QUESTION_WORDING_REPAIRED",
+                        ) &&
+                          !question.issues.includes(
+                            "QUESTION_WORDING_REPAIRED",
+                          ) && (
+                            <Badge variant="destructive">
+                              مراجعة صياغة السؤال
+                            </Badge>
+                          )}
+                        {question.issues.includes(
+                          "QUESTION_WORDING_REPAIRED",
+                        ) && (
+                          <Badge variant="secondary">تم اختصار السؤال</Badge>
+                        )}
                       </div>
                     </div>
                     <Badge variant="outline">مسودة</Badge>
@@ -375,13 +531,19 @@ export function AIGenerator() {
                   {renderAsset(question)}
                   {question.coverImageFailureReason && (
                     <p className="text-xs text-muted-foreground">
-                      سبب فشل الغلاف: {question.coverImageFailureReason}
+                      سبب فشل الغلاف: لم يتم العثور على صورة مناسبة بعد تجربة
+                      البدائل المتاحة.
                     </p>
                   )}
                   {question.assetRequest && (
-                    <pre className="overflow-auto rounded-2xl bg-black/20 p-3 text-xs text-muted-foreground">
-                      {JSON.stringify(question.assetRequest, null, 2)}
-                    </pre>
+                    <details className="rounded-2xl bg-black/20 p-3 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer font-medium">
+                        تفاصيل طلب الملف
+                      </summary>
+                      <pre className="mt-2 overflow-auto whitespace-pre-wrap">
+                        {JSON.stringify(question.assetRequest, null, 2)}
+                      </pre>
+                    </details>
                   )}
                   {question.gameplayFixReason && (
                     <div className="rounded-2xl bg-primary/10 p-3 text-sm text-muted-foreground">
@@ -395,9 +557,20 @@ export function AIGenerator() {
                   )}
                   {question.issues.length > 0 && (
                     <div className="rounded-2xl bg-destructive/10 p-3 text-sm text-destructive">
-                      {question.issues.join("، ")}
+                      {question.issues
+                        .map((issue) => WORDING_ISSUE_LABELS[issue] ?? issue)
+                        .join("، ")}
                     </div>
                   )}
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">
+                      تفاصيل طول السؤال
+                    </summary>
+                    <p className="mt-2">
+                      {countQuestionWords(question.question)} كلمة،{" "}
+                      {question.question.length} حرفًا
+                    </p>
+                  </details>
                 </CardContent>
               </Card>
             ))}

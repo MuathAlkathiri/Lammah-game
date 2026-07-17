@@ -16,7 +16,7 @@ const reviewedResponse = {
   data: {
     questions: [
       {
-        question: "من صاحب هذا الإنجاز في الاختبار؟",
+        question: "من صاحب هذا الإنجاز؟",
         correctAnswer: "الإجابة الآمنة",
         wrongAnswers: ["خاطئة 1", "خاطئة 2", "خاطئة 3"],
         difficulty: "medium",
@@ -24,7 +24,7 @@ const reviewedResponse = {
         type: "image",
         explanation: "شرح حتمي للاختبار",
         qualityScore: 9,
-        issues: [],
+        issues: ["QUESTION_ACADEMIC_STYLE", "QUESTION_WORDING_REPAIRED"],
         assetStatus: "READY",
         primaryAssetStatus: "READY",
         asset,
@@ -78,14 +78,26 @@ test.describe("@ai deterministic AI Generator presentation", () => {
       }),
     );
     await page.goto("/admin/ai-generator");
-    await page.getByRole("combobox").click();
+    await page.getByRole("combobox", { name: "الفئة" }).click();
     await page.getByRole("option", { name: "علوم" }).click();
-    await page.getByRole("button", { name: "توليد أسئلة" }).click();
+    await page.getByLabel("عدد الأسئلة").fill("2");
+    await page.getByRole("combobox", { name: "الصعوبة" }).click();
+    await page.getByRole("option", { name: "صعب" }).click();
+    const generationRequest = page.waitForRequest(
+      "**/admin/ai-generator/generate-reviewed",
+    );
+    await page.getByRole("button", { name: "توليد 2 أسئلة" }).click();
+    expect((await generationRequest).postDataJSON()).toMatchObject({
+      count: 2,
+      difficulty: "hard",
+    });
     await expect(
       page.getByRole("button", { name: "جاري التوليد..." }),
     ).toBeDisabled();
     await expect(page.getByTestId("ai-draft-0")).toBeVisible();
     await expect(page.getByTestId("ai-draft-1")).toBeVisible();
+    await expect(page.getByText("تم اختصار السؤال")).toBeVisible();
+    await expect(page.getByText("من صاحب هذا الإنجاز؟")).toBeVisible();
     await expect(
       page.getByTestId("ai-draft-0").getByTestId("primary-asset-status"),
     ).toContainText("READY");
@@ -112,14 +124,14 @@ test.describe("@ai deterministic AI Generator presentation", () => {
       }),
     );
     await page.goto("/admin/ai-generator");
-    await page.getByRole("combobox").click();
+    await page.getByRole("combobox", { name: "الفئة" }).click();
     await page.getByRole("option", { name: "علوم" }).click();
-    await page.getByRole("button", { name: "توليد أسئلة" }).click();
+    await page.getByRole("button", { name: "توليد 2 أسئلة" }).click();
     await expect(
       page.getByText("انتهت مهلة التوليد. حاول مجددًا."),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "توليد أسئلة" }),
+      page.getByRole("button", { name: "توليد 2 أسئلة" }),
     ).toBeEnabled();
     await assertSafePage(page);
   });

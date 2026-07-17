@@ -5,6 +5,7 @@ import {
   CategoryGameplayConfig,
 } from '../../categories/schemas/category.schema';
 import { GameMode } from '../contracts/asset-provider.interface';
+import { gulfMusicQuestionPolicy } from '../application/gulf-music-question.policy';
 
 export const DEFAULT_GAMEPLAY_CONFIG: Required<
   Pick<
@@ -53,6 +54,11 @@ type BuildReviewedPromptInput = {
 @Injectable()
 export class PromptBuilderService {
   buildReviewedQuestionsPrompt(input: BuildReviewedPromptInput): string {
+    const gulfMusic = gulfMusicQuestionPolicy.isGulfMusicCategory({
+      catalogName: input.catalogName,
+      categoryName: input.categoryName,
+      knowledgeFile: input.knowledgeFile,
+    });
     return `You are a senior Arabic quiz editor for Lammah.
 Lammah is an offline competitive party quiz game played by friends.
 
@@ -60,8 +66,17 @@ The Knowledge File below is the primary source of guidance.
 Use it to decide what to ask, what to avoid, and what quality means for this category.
 
 Global Rules:
-- Questions must be fun, specific, and suitable for friends in a party quiz.
-- Use natural Arabic that sounds human-written, not translated.
+- Questions must be fun, specific, and suitable for a fast social party quiz.
+- The question field is one short playable sentence; start with the actual question immediately.
+- Prefer 8-18 Arabic words, stay under 22 when practical, and never exceed 28 except for an essential proper name or short quote.
+- It must be easy to understand and read aloud in under 6 seconds.
+- Use natural modern conversational Arabic, not translated or textbook Arabic.
+- Include one main idea and only the minimum clue needed for one clear answer.
+- Put educational background after the reveal in explanation, never inside question.
+- Avoid introductions, nested clauses, repeated clues, unnecessary translations, excessive punctuation, and parentheses.
+- Never use academic filler such as: بناءً على ما سبق، في ضوء المعلومات، أي من الآتي، يُعرّف بأنه، يتمثل في، والمقصود هنا، مع العلم أن.
+- Never mention the expected answer format or leak the answer.
+- Keep every difficulty concise: hard means more specific knowledge, not longer wording.
 - Avoid generic school-style questions.
 - Avoid very obvious questions.
 - Avoid repeated topics, repeated names, repeated events, and repeated wording.
@@ -80,6 +95,9 @@ Request:
 - Required count: ${input.count}
 - Knowledge file: "${input.knowledgeFile}"
 - Used default knowledge: ${input.usedDefaultKnowledge}
+
+${this.buildDifficultyGuidance(input.difficulty)}
+${gulfMusic ? this.buildGulfMusicRules(input.difficulty, input.count) : ''}
 
 ${this.buildAiConfigBlock(input.aiConfig)}
 ${this.buildGameplayConfigBlock(input.gameplayConfig, input.count)}
@@ -111,6 +129,42 @@ Required JSON schema:
 
 Generate exactly ${input.count} reviewed question drafts.
 Return only the JSON object.`;
+  }
+
+  private buildGulfMusicRules(
+    difficulty: BuildReviewedPromptInput['difficulty'],
+    count: number,
+  ) {
+    return `Gulf Music Workflow (mandatory and overrides general examples):
+- Select exactly ${count} distinct verified rows marked ${difficulty} from the Knowledge File.
+- Every question field must be exactly: "ما اسم هذه الأغنية؟"
+- correctAnswer must be the canonical song title; never ask for or answer with the artist.
+- gameMode="identifySong", type="audio", assetStatus="PENDING".
+- primaryAssetRequest and assetRequest must both contain: type="audio", assetType="audio", mediaIntent="music", sourceType="song", entityType="song", entity=<canonical title>, title=<canonical title>, artist=<canonical artist>, language="ar", region="gulf".
+- Artist is mandatory search metadata. Never create a song or artist outside the verified table.
+- Wrong answers must be three other real song titles from the verified table, never artist names.
+- Do not generate trivia, voice, singer, image-identification, lyric-completion, album, year, or theme questions.
+- Cover is decorative and must not contain the song title or album artwork.`;
+  }
+
+  private buildDifficultyGuidance(
+    difficulty: BuildReviewedPromptInput['difficulty'],
+  ) {
+    const guidance = {
+      easy: `Easy difficulty guidance:
+- Ask familiar facts with direct wording and a widely recognizable answer.
+- Require little specialized knowledge and minimize ambiguity.
+- Keep distractors believable, but distinguishable with common knowledge.`,
+      medium: `Medium difficulty guidance:
+- Require reasonable subject knowledge; the answer should be less obvious but fair.
+- Use specific wording and plausible distractors from the same topic.
+- Reward familiarity with the subject rather than obscure recall.`,
+      hard: `Hard difficulty guidance:
+- Require deeper or more specific subject knowledge without resorting to hopelessly obscure trivia.
+- Use precise wording that rules out multiple valid answers.
+- Make distractors highly plausible while preserving one clearly defensible answer.`,
+    } as const;
+    return guidance[difficulty];
   }
 
   normalizeGameplayConfig(
@@ -189,6 +243,13 @@ Gameplay Mode Rules:
 - For completeQuote, type should be "quote".
 - For emojiPuzzle, type should be "emoji".
 - For timeline, type should be "timeline".
+- Trivia: ask one direct question with no background paragraph.
+- identifyCharacter: use "من هذه الشخصية؟" when the image supplies the clue, or one short identifying clue otherwise.
+- identifyImage: prefer "ما اسم هذا المكان؟" or "من هذه الشخصية؟" and do not narrate the image.
+- identifyVoice: prefer "لمن هذا الصوت؟" or "من صاحب هذا المقطع؟".
+- completeQuote: prefer "من قال هذه العبارة؟".
+- Music identification: prefer "ما اسم هذه الأغنية؟" or "من صاحب هذه الأغنية؟".
+- timeline: keep the ordering question short, such as "أي حدث وقع أولًا؟".
 
 Asset Rules:
 - Every question must include coverImageRequest with type="image" and purpose="decorative".

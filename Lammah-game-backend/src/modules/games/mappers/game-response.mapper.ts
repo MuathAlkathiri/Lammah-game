@@ -40,9 +40,15 @@ export class GameResponseMapper {
       'toObject' in value
         ? (value as { toObject(): Record<string, unknown> }).toObject()
         : (value as Record<string, unknown>);
+    const asset = 'provider' in source && 'url' in source && 'type' in source;
     return Object.fromEntries(
       Object.entries(source)
-        .filter(([key]) => key !== '__v' && key !== 'localPath')
+        .filter(
+          ([key]) =>
+            key !== '__v' &&
+            key !== 'localPath' &&
+            (!asset || !['metadata', 'sourceUrl', 'searchQuery'].includes(key)),
+        )
         .map(([key, item]) => [key, this.sanitize(item)]),
     );
   }

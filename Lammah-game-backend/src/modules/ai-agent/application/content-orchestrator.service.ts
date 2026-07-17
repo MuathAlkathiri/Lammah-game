@@ -11,6 +11,7 @@ import { AssetService } from './asset.service';
 import { AppleMusicPreviewProvider } from '../infrastructure/assets/apple-music-preview.provider';
 import { MusicAssetPlan } from '../contracts/music-asset-provider.interface';
 import { AssetRequest } from '../contracts/asset-provider.interface';
+import { normalizeAssetRequestIntent } from './asset-request-normalizer';
 
 @Injectable()
 export class ContentOrchestratorService {
@@ -45,7 +46,16 @@ export class ContentOrchestratorService {
 
         const primaryPlan = planned.value.primaryAssetPlan;
         const coverPlan = planned.value.coverImagePlan;
-        const primaryResult = await this.resolvePrimary(primaryPlan);
+        const primaryRequest = primaryPlan
+          ? this.planToRequest(
+              primaryPlan,
+              draft.gameMode as AssetRequest['gameMode'],
+            )
+          : null;
+        const primaryResult = await this.resolvePrimary(
+          primaryPlan,
+          draft.gameMode as AssetRequest['gameMode'],
+        );
         const coverResult = await this.assets.process(
           coverPlan ? this.imageCoverRequest(coverPlan) : undefined,
         );
@@ -55,7 +65,10 @@ export class ContentOrchestratorService {
               question: draft.question,
               correctAnswer: draft.correctAnswer,
               gameMode: draft.gameMode,
-              requestedEntity: primaryPlan?.entity ?? primaryPlan?.title,
+              requestedEntity:
+                primaryPlan?.canonicalEntity ??
+                primaryPlan?.entity ??
+                primaryPlan?.title,
               retrievedAssetMetadata:
                 primaryResult.assetStatus === 'READY'
                   ? primaryResult.asset
@@ -68,10 +81,8 @@ export class ContentOrchestratorService {
         trace.push(assetReview.trace);
         const assembled = {
           ...draft,
-          primaryAssetRequest: primaryPlan
-            ? this.planToRequest(primaryPlan)
-            : null,
-          assetRequest: primaryPlan ? this.planToRequest(primaryPlan) : null,
+          primaryAssetRequest: primaryPlan ? primaryRequest : null,
+          assetRequest: primaryRequest,
           primaryAssetStatus: primaryResult.assetStatus,
           assetStatus: primaryResult.assetStatus,
           primaryAsset:
@@ -95,6 +106,7 @@ export class ContentOrchestratorService {
             coverResult.assetStatus === 'FAILED'
               ? coverResult.assetFailureReason
               : undefined,
+          assetPlannerDiagnostics: planned.value.plannerDiagnostics,
           issues: [
             ...this.array(draft.issues),
             ...(assetReview.value?.issues ?? []),
@@ -119,7 +131,10 @@ export class ContentOrchestratorService {
     return { questions };
   }
 
-  private async resolvePrimary(plan: Record<string, unknown> | null) {
+  private async resolvePrimary(
+    plan: Record<string, unknown> | null,
+    gameMode: AssetRequest['gameMode'],
+  ) {
     if (!plan) return this.assets.process();
     if (plan.assetType === 'musicPreview') {
       const results = await this.music.searchTrack(
@@ -139,14 +154,18 @@ export class ContentOrchestratorService {
         assetFailureStep: 'music-preview-verification',
       };
     }
-    return this.assets.process(this.planToRequest(plan));
+    return this.assets.process(this.planToRequest(plan, gameMode));
   }
 
-  private planToRequest(plan: Record<string, unknown>): AssetRequest {
-    return {
+  private planToRequest(
+    plan: Record<string, unknown>,
+    gameMode?: AssetRequest['gameMode'],
+  ): AssetRequest {
+    const request = {
       ...plan,
       type: plan.assetType === 'image' ? 'image' : 'audio',
     } as AssetRequest;
+    return gameMode ? normalizeAssetRequestIntent(request, gameMode) : request;
   }
   private imageCoverRequest(plan: Record<string, unknown>): AssetRequest {
     return { ...plan, type: 'image', purpose: 'decorative' } as AssetRequest;

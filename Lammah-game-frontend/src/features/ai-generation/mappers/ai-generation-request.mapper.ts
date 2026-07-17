@@ -6,6 +6,7 @@ import type {
   GenerateReviewedInput,
   ReviewedQuestionDraft,
 } from "../types/ai-generation.types";
+import { AI_GENERATION_DEFAULTS } from "../models/ai-generation-form";
 
 export function toGenerateReviewedRequest(
   input: GenerateReviewedInput,
@@ -18,8 +19,8 @@ export function toGenerateReviewedRequest(
     ...(input.categoryName?.trim()
       ? { categoryName: input.categoryName.trim() }
       : {}),
-    count: input.count ?? 2,
-    difficulty: input.difficulty ?? "medium",
+    count: input.count ?? AI_GENERATION_DEFAULTS.count,
+    difficulty: input.difficulty ?? AI_GENERATION_DEFAULTS.difficulty,
     language: input.language ?? "ar",
   };
 }

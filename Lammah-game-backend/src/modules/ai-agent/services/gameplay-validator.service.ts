@@ -5,6 +5,7 @@ import {
   GameMode,
   QuestionAssetType,
 } from '../contracts/asset-provider.interface';
+import { normalizeAssetRequestIntent } from '../application/asset-request-normalizer';
 
 export type GameplayDraft = {
   question: string;
@@ -91,14 +92,17 @@ export class GameplayValidatorService {
               Number(draft.assetRequest.duration) || maxAudioDuration,
             ),
           };
+          draft.assetRequest = normalizeAssetRequestIntent(
+            draft.assetRequest,
+            draft.gameMode,
+          );
 
           if (
-            !draft.assetRequest.entity &&
-            !draft.assetRequest.originalName &&
-            !draft.assetRequest.query
+            draft.gameMode === 'identifyVoice' &&
+            !draft.assetRequest.entity
           ) {
             draft.issues.push(
-              'identifyVoice requires assetRequest entity, originalName, or query',
+              'VOICE_ENTITY_REQUIRED: identifyVoice requires assetRequest entity',
             );
           }
         }

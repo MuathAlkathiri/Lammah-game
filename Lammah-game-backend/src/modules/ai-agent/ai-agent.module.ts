@@ -6,6 +6,7 @@ import { KnowledgeLoaderService } from './services/knowledge-loader.service';
 import { PromptBuilderService } from './services/prompt-builder.service';
 import { GameplayValidatorService } from './services/gameplay-validator.service';
 import { WrongAnswerRepairService } from './services/wrong-answer-repair.service';
+import { QuestionWordingService } from './services/question-wording.service';
 import { LlmClientService } from './infrastructure/ai/llm-client.service';
 import { ContentOrchestratorService } from './application/content-orchestrator.service';
 import { QuestionGeneratorAgent } from './agents/question-generator.agent';
@@ -31,6 +32,7 @@ import { AssetResolutionModule } from './asset-resolution.module';
     PromptBuilderService,
     GameplayValidatorService,
     WrongAnswerRepairService,
+    QuestionWordingService,
     LlmClientService,
     ContentOrchestratorService,
     QuestionGeneratorAgent,

@@ -13,6 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "seed": "ts-node -r tsconfig-paths/register src/seed.ts",
+    "configure:gulf-music": "ts-node -r tsconfig-paths/register scripts/configure-gulf-music-category.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit",
@@ -24,11 +25,11 @@
     "test:media:integration": "jest --config test/jest-media.json --runInBand",
     "test:fixtures:seed": "ts-node --transpile-only --project tsconfig.test.json -r tsconfig-paths/register test/fixtures/manage-fixtures.ts seed",
     "test:fixtures:reset": "ts-node --transpile-only --project tsconfig.test.json -r tsconfig-paths/register test/fixtures/manage-fixtures.ts reset",
-    "test:ai:live": "node scripts/run-live-ai-check.mjs"
-    ,"api:openapi": "NODE_PATH=./node_modules ts-node -r tsconfig-paths/register scripts/generate-openapi.ts"
-    ,"api:validate": "ts-node -r tsconfig-paths/register scripts/validate-openapi.ts"
-    ,"api:offline-check": "node scripts/check-openapi-offline.mjs"
-    ,"api:check": "npm run api:offline-check && npm run api:validate"
+    "test:ai:live": "node scripts/run-live-ai-check.mjs",
+    "api:openapi": "NODE_PATH=./node_modules ts-node -r tsconfig-paths/register scripts/generate-openapi.ts",
+    "api:validate": "ts-node -r tsconfig-paths/register scripts/validate-openapi.ts",
+    "api:offline-check": "node scripts/check-openapi-offline.mjs",
+    "api:check": "npm run api:offline-check && npm run api:validate"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

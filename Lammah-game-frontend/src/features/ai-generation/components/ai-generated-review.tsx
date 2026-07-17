@@ -19,6 +19,45 @@ import { getMediaUrl } from "@/lib/api/media-url";
 import { getEntityId } from "@/lib/utils";
 import { Question } from "@/types";
 
+const wordingIssueLabels: Record<string, string> = {
+  QUESTION_TOO_LONG: "السؤال طويل",
+  QUESTION_MULTIPLE_IDEAS: "أكثر من فكرة",
+  QUESTION_ACADEMIC_STYLE: "صياغة أكاديمية",
+  QUESTION_CONTAINS_EXPLANATION: "شرح داخل السؤال",
+  QUESTION_CONTAINS_PARENTHESES: "تفاصيل بين قوسين",
+  QUESTION_VAGUE: "السؤال مبهم",
+  QUESTION_ANSWER_LEAKAGE: "قد يكشف الإجابة",
+};
+
+const voiceAssetFailureLabels: Record<string, string> = {
+  VOICE_NO_SPEECH_WINDOW:
+    "تم العثور على فيديو مرتبط بالشخصية، لكن لم يتم العثور على جزء صوتي واضح.",
+  VOICE_MUSIC_DOMINANT_WINDOWS:
+    "تم رفض النتائج لأنها تحتوي موسيقى أو مونتاج بدل حوار.",
+  VOICE_ALL_WINDOWS_SILENT: "تم تجربة عدة مقاطع ولم يتم العثور على كلام مناسب.",
+  VOICE_CLIP_EXTRACTION_FAILED: "فشل استخراج المقطع الصوتي.",
+  VOICE_NO_VALID_VIDEO_AFTER_SEARCH:
+    "لم يظهر مقطع صوتي واضح ومرتبط بالشخصية في نتائج البحث.",
+  VOICE_VIDEO_MUSIC_METADATA:
+    "تم رفض النتائج لأنها تحتوي موسيقى أو مونتاج بدل حوار.",
+  VOICE_ENTITY_EVIDENCE_MISSING: "لم يظهر اسم الشخصية بوضوح في نتائج البحث.",
+  MUSIC_TITLE_REQUIRED: "عنوان الأغنية مطلوب.",
+  MUSIC_ARTIST_REQUIRED: "اسم الفنان مطلوب للتحقق من الأغنية.",
+  MUSIC_SONG_NOT_VERIFIED: "الأغنية غير موجودة في مصدر المعرفة الموثوق.",
+  MUSIC_NO_VALID_YOUTUBE_ASSET:
+    "لم يتم العثور على مقطع يطابق عنوان الأغنية والفنان.",
+  MUSIC_TITLE_ARTIST_MISMATCH: "تم رفض نتيجة لا تطابق الأغنية والفنان معًا.",
+  MUSIC_NO_VALID_WINDOW: "لم يتم العثور على جزء موسيقي واضح داخل المقطع.",
+};
+
+const localizedAssetFailure = (diagnostics: unknown, fallback?: string) => {
+  const serialized = JSON.stringify(diagnostics ?? {});
+  const code = Object.keys(voiceAssetFailureLabels).find((candidate) =>
+    serialized.includes(candidate),
+  );
+  return (code && voiceAssetFailureLabels[code]) || fallback;
+};
+
 export function AiGeneratedReview() {
   const [filters, setFilters] = useState<Record<string, string>>({
     status: "draft",
@@ -106,7 +145,7 @@ export function AiGeneratedReview() {
             ["difficulty", "easy,medium,hard"],
             [
               "gameMode",
-              "trivia,identifyCharacter,identifyVoice,identifyImage,completeQuote,timeline,emojiPuzzle",
+              "trivia,identifyCharacter,identifyVoice,identifyImage,completeQuote,timeline,emojiPuzzle,identifySong,identifySinger,identifyMusicIntro",
             ],
             ["assetStatus", "READY,FAILED,NOT_REQUIRED"],
           ].map(([key, values]) => (
@@ -167,6 +206,12 @@ export function AiGeneratedReview() {
             const id = getEntityId(question);
             const cover = question.coverImage?.url;
             const primary = question.primaryAsset?.url || question.mediaUrl;
+            const wordingIssues = (question.issues ?? []).filter(
+              (issue) => wordingIssueLabels[issue],
+            );
+            const wordingRepaired = (question.issues ?? []).includes(
+              "QUESTION_WORDING_REPAIRED",
+            );
             return (
               <Card key={id} className="overflow-hidden">
                 {cover ? (
@@ -200,6 +245,9 @@ export function AiGeneratedReview() {
                   </label>
                   <CardTitle>{question.question}</CardTitle>
                   <p>الإجابة: {question.correctAnswer || question.answer}</p>
+                  {question.primaryAssetRequest?.artist && (
+                    <p>الفنان: {question.primaryAssetRequest.artist}</p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Badge>{question.status}</Badge>
                     <Badge variant="outline">{question.difficulty}</Badge>
@@ -213,9 +261,34 @@ export function AiGeneratedReview() {
                     <Badge variant="secondary">
                       Quality {question.qualityScore ?? "-"}
                     </Badge>
+                    {wordingIssues.length > 0 && (
+                      <Badge variant="destructive">مراجعة الصياغة</Badge>
+                    )}
+                    {wordingRepaired && (
+                      <Badge variant="secondary">تم اختصار السؤال</Badge>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {wordingIssues.length > 0 && (
+                    <p className="text-sm text-destructive">
+                      {wordingIssues
+                        .map((issue) => wordingIssueLabels[issue])
+                        .join("، ")}
+                    </p>
+                  )}
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">
+                      تفاصيل طول السؤال
+                    </summary>
+                    <p className="mt-2">
+                      {
+                        question.question.trim().split(/\s+/).filter(Boolean)
+                          .length
+                      }{" "}
+                      كلمة، {question.question.length} حرفًا
+                    </p>
+                  </details>
                   {primary &&
                     (question.type === "audio" ? (
                       <audio
@@ -240,8 +313,25 @@ export function AiGeneratedReview() {
                   ) : null}
                   {question.assetFailureReason && (
                     <p className="text-sm text-destructive">
-                      {question.assetFailureReason}
+                      {localizedAssetFailure(
+                        question.assetFailureDiagnostics,
+                        question.assetFailureReason,
+                      )}
                     </p>
+                  )}
+                  {question.assetFailureDiagnostics && (
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">
+                        التفاصيل التقنية للملف
+                      </summary>
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-2">
+                        {JSON.stringify(
+                          question.assetFailureDiagnostics,
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <Button

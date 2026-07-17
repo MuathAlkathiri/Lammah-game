@@ -330,7 +330,8 @@ const assertions = [
   [
     aiRequestMapper.includes("GenerateReviewedQuestionsDto") &&
       aiRequestMapper.includes("SaveReviewedDraftsDto") &&
-      aiRequestMapper.includes("count: input.count ?? 2"),
+      aiRequestMapper.includes("count: input.count ?? AI_GENERATION_DEFAULTS.count") &&
+      aiGenerationSource.includes("AI_GENERATION_DEFAULT_COUNT = 2"),
     "AI request mapping must preserve generated contracts and the default count",
   ],
   [

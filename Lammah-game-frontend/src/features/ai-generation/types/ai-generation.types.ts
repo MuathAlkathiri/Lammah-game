@@ -52,6 +52,16 @@ export interface ReviewedQuestionDraft {
   agentTrace?: AgentTrace[];
   gameplayMetadata?: Record<string, unknown>;
   aiMetadata?: Record<string, unknown>;
+  musicMetadata?: {
+    title: string;
+    artist: string;
+    aliases?: string[];
+    artistAliases?: string[];
+    releaseYear?: number;
+    region: "gulf";
+    country?: string;
+    language: "ar";
+  };
 }
 
 export interface GenerateReviewedQuestionsResult {

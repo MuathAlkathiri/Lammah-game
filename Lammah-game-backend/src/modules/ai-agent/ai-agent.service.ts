@@ -38,9 +38,16 @@ import {
 } from './contracts/asset-provider.interface';
 import { GameplayValidatorService } from './services/gameplay-validator.service';
 import { WrongAnswerRepairService } from './services/wrong-answer-repair.service';
+import { QuestionWordingService } from './services/question-wording.service';
+import { LlmClientService } from './infrastructure/ai/llm-client.service';
 import { ContentOrchestratorService } from './application/content-orchestrator.service';
 import { AgentTrace } from './agents/llm-agent.interface';
 import { QuestionRepository } from '../questions/persistence/question.repository';
+import {
+  GulfMusicQuestionPolicy,
+  GulfSong,
+  gulfMusicQuestionPolicy,
+} from './application/gulf-music-question.policy';
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +88,16 @@ type ReviewedQuestionDraft = {
   qualityScore: number;
   issues: string[];
   agentTrace?: AgentTrace[];
+  musicMetadata?: {
+    title: string;
+    artist: string;
+    aliases?: string[];
+    artistAliases?: string[];
+    releaseYear?: number;
+    region: 'gulf';
+    country?: string;
+    language: 'ar';
+  };
 };
 
 type ReviewedGenerationContext = {
@@ -93,6 +110,7 @@ type ReviewedGenerationContext = {
   gameplayConfig?: CategoryGameplayConfig;
   source: 'categoryId' | 'manualNames';
   loadedKnowledge: LoadedKnowledge;
+  gulfMusic: boolean;
 };
 
 interface ChatCompletionResponse {
@@ -133,6 +151,8 @@ export class AiAgentService {
     private assetService: AssetService,
     private gameplayValidator: GameplayValidatorService,
     private wrongAnswerRepair: WrongAnswerRepairService,
+    private questionWording: QuestionWordingService,
+    private llmClient: LlmClientService,
     private contentOrchestrator: ContentOrchestratorService,
     private readonly questionRepository: QuestionRepository,
   ) {
@@ -308,6 +328,9 @@ export class AiAgentService {
   async generateReviewedQuestions(dto: GenerateReviewedQuestionsDto) {
     try {
       const context = await this.resolveReviewedGenerationContext(dto);
+      const gameplayConfig = context.gulfMusic
+        ? this.gulfMusicGameplayConfig(context.gameplayConfig)
+        : context.gameplayConfig;
       const prompt = this.promptBuilder.buildReviewedQuestionsPrompt({
         catalogName: context.catalogName,
         categoryName: context.categoryName,
@@ -318,7 +341,7 @@ export class AiAgentService {
         usedDefaultKnowledge: context.loadedKnowledge.usedDefaultKnowledge,
         knowledge: context.loadedKnowledge.knowledge,
         aiConfig: context.aiConfig,
-        gameplayConfig: context.gameplayConfig,
+        gameplayConfig,
       });
       const useMultiAgent =
         this.configService
@@ -350,16 +373,29 @@ export class AiAgentService {
         aiResponse,
         context.difficulty,
       ).slice(0, context.count);
+      const groundedQuestions = context.gulfMusic
+        ? this.normalizeGulfMusicDrafts(
+            questions,
+            gulfMusicQuestionPolicy.parseKnowledge(
+              context.loadedKnowledge.knowledge.raw,
+            ),
+            context.difficulty,
+            gameplayConfig?.maxAudioDuration ?? 6,
+          )
+        : questions;
       const normalizedGameplayConfig =
-        this.promptBuilder.normalizeGameplayConfig(context.gameplayConfig);
-      const gameplayValidatedQuestions = questions.map((question) =>
+        this.promptBuilder.normalizeGameplayConfig(gameplayConfig);
+      const gameplayValidatedQuestions = groundedQuestions.map((question) =>
         this.gameplayValidator.normalize(
           question,
           normalizedGameplayConfig.maxAudioDuration,
         ),
       );
-      const repairedQuestions = await this.repairWrongAnswers(
+      const wordingRepairedQuestions = await this.repairQuestionWording(
         gameplayValidatedQuestions,
+      );
+      const repairedQuestions = await this.repairWrongAnswers(
+        wordingRepairedQuestions,
         context.categoryName,
       );
       const qualityValidatedQuestions = repairedQuestions.map(
@@ -368,7 +404,7 @@ export class AiAgentService {
       );
       const questionsWithAssets = await this.processDraftAssets(
         qualityValidatedQuestions,
-        context.gameplayConfig,
+        gameplayConfig,
       );
 
       if (questionsWithAssets.length === 0) {
@@ -391,6 +427,7 @@ export class AiAgentService {
           gameplayValidatorUsed: true,
           multiAgentContentPipeline: useMultiAgent,
           providerSelection: 'assetService',
+          gulfMusicWorkflow: context.gulfMusic,
           imageProviders: ['wikimedia'],
           coverImagesRequested: questionsWithAssets.length,
           coverImagesReady: questionsWithAssets.filter(
@@ -401,6 +438,9 @@ export class AiAgentService {
           ).length,
           wrongAnswerRepairUsed: repairedQuestions.some((question) =>
             question.issues.includes('wrongAnswers repaired'),
+          ),
+          wordingRepairUsed: wordingRepairedQuestions.some((question) =>
+            question.issues.includes('QUESTION_WORDING_REPAIRED'),
           ),
         },
         data: {
@@ -570,6 +610,11 @@ export class AiAgentService {
         gameplayConfig: category.gameplayConfig,
         source: 'categoryId',
         loadedKnowledge,
+        gulfMusic: gulfMusicQuestionPolicy.isGulfMusicCategory({
+          catalogName,
+          categoryName,
+          knowledgeFile: loadedKnowledge.knowledgeFile,
+        }),
       };
     }
 
@@ -595,7 +640,101 @@ export class AiAgentService {
       language,
       source: 'manualNames',
       loadedKnowledge,
+      gulfMusic: gulfMusicQuestionPolicy.isGulfMusicCategory({
+        catalogName: dto.catalogName,
+        categoryName: dto.categoryName,
+        knowledgeFile: loadedKnowledge.knowledgeFile,
+      }),
     };
+  }
+
+  private gulfMusicGameplayConfig(
+    current?: CategoryGameplayConfig,
+  ): CategoryGameplayConfig {
+    return {
+      ...current,
+      gameModes: {
+        trivia: 0,
+        identifyCharacter: 0,
+        identifyVoice: 0,
+        identifyImage: 0,
+        completeQuote: 0,
+        timeline: 0,
+        emojiPuzzle: 0,
+        identifySong: 100,
+        identifySinger: 0,
+        identifyMusicIntro: 0,
+      },
+      supportedAssetTypes: ['audio', 'image'],
+      maxAudioDuration: current?.maxAudioDuration ?? 6,
+    };
+  }
+
+  private normalizeGulfMusicDrafts(
+    drafts: ReviewedQuestionDraft[],
+    songs: GulfSong[],
+    difficulty: 'easy' | 'medium' | 'hard',
+    duration: number,
+  ): ReviewedQuestionDraft[] {
+    const used = new Set<string>();
+    const artists = new Map<string, number>();
+    const eligible = songs.filter((song) => song.difficulty === difficulty);
+    const normalized = drafts.flatMap((draft) => {
+      const artist = this.readString(draft.assetRequest?.artist);
+      const resolved = gulfMusicQuestionPolicy.resolve(
+        eligible,
+        draft.correctAnswer,
+        artist,
+      );
+      if (!resolved.song) return [];
+      const song = resolved.song;
+      const key = gulfMusicQuestionPolicy.duplicateKey(song);
+      const artistKey = song.artist.toLocaleLowerCase('ar');
+      if (used.has(key) || (artists.get(artistKey) ?? 0) >= 2) return [];
+      used.add(key);
+      artists.set(artistKey, (artists.get(artistKey) ?? 0) + 1);
+      const wrongAnswers = songs
+        .filter(
+          (candidate) =>
+            gulfMusicQuestionPolicy.duplicateKey(candidate) !== key,
+        )
+        .map((candidate) => candidate.title)
+        .filter((title, index, values) => values.indexOf(title) === index)
+        .slice(0, 3);
+      const assetRequest = gulfMusicQuestionPolicy.assetRequest(song, duration);
+      return [
+        {
+          ...draft,
+          question: GulfMusicQuestionPolicy.question,
+          correctAnswer: song.title,
+          wrongAnswers,
+          difficulty,
+          gameMode: 'identifySong' as const,
+          type: 'audio' as const,
+          assetRequest,
+          primaryAssetRequest: assetRequest,
+          assetStatus: 'PENDING' as const,
+          primaryAssetStatus: 'PENDING' as const,
+          musicMetadata: {
+            title: song.title,
+            artist: song.artist,
+            aliases: song.titleAliases,
+            artistAliases: song.artistAliases,
+            ...(song.releaseYear ? { releaseYear: song.releaseYear } : {}),
+            region: 'gulf' as const,
+            country: song.country,
+            language: 'ar' as const,
+          },
+        },
+      ];
+    });
+    if (!normalized.length)
+      throw new BadRequestException('MUSIC_SONG_NOT_VERIFIED');
+    if (normalized.length !== drafts.length)
+      throw new BadRequestException(
+        'MUSIC_VERIFIED_POOL_EXHAUSTED: duplicate, repeated-artist, or unverified song draft was rejected',
+      );
+    return normalized;
   }
 
   private async processDraftAssets(
@@ -658,6 +797,80 @@ export class AiAgentService {
           assetFailureStep: primaryFailure?.assetFailureStep,
           assetFailureDiagnostics: primaryFailure?.assetFailureDiagnostics,
         };
+      }),
+    );
+  }
+
+  private async repairQuestionWording(
+    questions: ReviewedQuestionDraft[],
+  ): Promise<ReviewedQuestionDraft[]> {
+    return Promise.all(
+      questions.map(async (question) => {
+        const initial = this.questionWording.validate(
+          question.question,
+          question.correctAnswer,
+        );
+        if (!initial.issues.length) return question;
+
+        const baseIssues = Array.from(
+          new Set([...question.issues, ...initial.issues]),
+        );
+        if (!this.questionWording.needsRepair(initial.issues)) {
+          return { ...question, issues: baseIssues };
+        }
+
+        const deterministic = this.questionWording.safelyShorten(
+          question.question,
+        );
+        const deterministicReview = this.questionWording.validate(
+          deterministic,
+          question.correctAnswer,
+        );
+        if (
+          deterministic !== question.question &&
+          deterministicReview.issues.length === 0
+        ) {
+          return {
+            ...question,
+            question: deterministic,
+            issues: [...baseIssues, 'QUESTION_WORDING_REPAIRED'],
+          };
+        }
+
+        try {
+          const response = await this.llmClient.complete(
+            this.questionWording.buildRepairPrompt(question),
+            0.2,
+          );
+          const repaired = this.questionWording.parseRepairResponse(response);
+          const repairedReview = this.questionWording.validate(
+            repaired,
+            question.correctAnswer,
+          );
+          if (repaired && repairedReview.issues.length === 0) {
+            return {
+              ...question,
+              question: repaired,
+              issues: [...baseIssues, 'QUESTION_WORDING_REPAIRED'],
+            };
+          }
+        } catch {
+          // Preserve the factual original if a safe, validated rewrite is unavailable.
+        }
+
+        if (
+          deterministic !== question.question &&
+          deterministicReview.issues.length < initial.issues.length
+        ) {
+          return {
+            ...question,
+            question: deterministic,
+            issues: Array.from(
+              new Set([...baseIssues, ...deterministicReview.issues]),
+            ),
+          };
+        }
+        return { ...question, issues: baseIssues };
       }),
     );
   }
@@ -1125,9 +1338,15 @@ export class AiAgentService {
   ): ReviewedQuestionDraft {
     const issues = [...question.issues];
 
-    if (question.question.length < 25) {
+    if (this.questionWording.countWords(question.question) < 4) {
       issues.push('question is too short');
     }
+
+    const unresolvedWordingIssues = this.questionWording.validate(
+      question.question,
+      question.correctAnswer,
+    ).issues;
+    issues.push(...unresolvedWordingIssues);
 
     if (!question.correctAnswer) {
       issues.push('answer is missing');
@@ -1181,8 +1400,11 @@ export class AiAgentService {
       issues.push('correctAnswer appears in wrongAnswers');
     }
 
+    const wordingPenalty = Math.min(3, unresolvedWordingIssues.length);
+
     return {
       ...question,
+      qualityScore: Math.max(1, question.qualityScore - wordingPenalty),
       question: question.question || `سؤال غير مكتمل ${index + 1}`,
       explanation: question.explanation || 'شرح غير مكتمل.',
       issues: Array.from(new Set(issues)),

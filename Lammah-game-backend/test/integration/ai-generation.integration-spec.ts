@@ -204,8 +204,8 @@ describe('AI Generation HTTP orchestration integration', () => {
     expect(llm.calls).toHaveLength(7);
     expect(llm.calls.map((call) => call.prompt.split('\n')[0])).toEqual([
       expect.stringContaining('You are a senior Arabic quiz editor'),
-      expect.stringContaining('Convert this draft'),
-      expect.stringContaining('Convert this draft'),
+      expect.stringContaining('Plan assets from the draft'),
+      expect.stringContaining('Plan assets from the draft'),
       expect.stringContaining('Review only the supplied asset metadata'),
       expect.stringContaining('Review only the supplied asset metadata'),
       expect.stringContaining('Review this completed Arabic party-game draft'),
@@ -213,6 +213,48 @@ describe('AI Generation HTTP orchestration integration', () => {
     ]);
     expect(llm.calls[0].prompt).toContain('Required count: 2');
     expect(llm.calls[0].prompt).toContain('Knowledge File:');
+    expect(await questions.countDocuments()).toBe(before);
+    expectSafeResponse(response.body);
+  });
+
+  it('repairs exam-style wording without changing answer, difficulty, mode, assets, or persistence', async () => {
+    const questions = database.models[Question.name] as Model<Question>;
+    const before = await questions.countDocuments();
+    const generated = {
+      ...draft(1),
+      question:
+        'في ضوء المعلومات المذكورة عن عالم ناروتو، ما التقنية الخاصة التي يستخدمها كاكاشي لنسخ تقنيات خصومه، مع العلم أنها مرتبطة بعينه وتمنحه قدرة مميزة؟',
+      correctAnswer: 'الشارينغان',
+      difficulty: 'hard',
+      gameMode: 'trivia',
+    };
+    queueSingleGeneration(generated);
+    llm.enqueue({
+      question: 'ما التقنية التي يستخدمها كاكاشي لنسخ تقنيات خصومه؟',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/admin/ai-generator/generate-reviewed')
+      .set(auth())
+      .send({ categoryId, count: 1, difficulty: 'hard' })
+      .expect(201);
+
+    expect(response.body.data.questions[0]).toMatchObject({
+      question: 'ما التقنية التي يستخدمها كاكاشي لنسخ تقنيات خصومه؟',
+      correctAnswer: 'الشارينغان',
+      difficulty: 'hard',
+      gameMode: 'trivia',
+      coverImageStatus: 'READY',
+      issues: expect.arrayContaining([
+        'QUESTION_TOO_LONG',
+        'QUESTION_ACADEMIC_STYLE',
+        'QUESTION_WORDING_REPAIRED',
+      ]),
+    });
+    expect(response.body.meta.wordingRepairUsed).toBe(true);
+    expect(llm.calls.at(-1)?.prompt).toContain(
+      'Shorten one Arabic party-game question',
+    );
     expect(await questions.countDocuments()).toBe(before);
     expectSafeResponse(response.body);
   });
@@ -362,7 +404,7 @@ describe('AI Generation HTTP orchestration integration', () => {
     expectSafeResponse(response.body);
   });
 
-  it('normalizes trivia-like gameplay and reports a missing required asset request', async () => {
+  it('normalizes trivia-like gameplay and canonically plans a missing identifying asset request', async () => {
     queueSingleGeneration({
       ...draft(22),
       gameMode: 'identifyCharacter',
@@ -396,10 +438,16 @@ describe('AI Generation HTTP orchestration integration', () => {
       .expect(201);
     expect(missing.body.data.questions[0].issues).toEqual(
       expect.arrayContaining([
-        'identifyCharacter requires assetRequest entity or context',
         'question type image is not supported by gameplayConfig',
       ]),
     );
+    expect(missing.body.data.questions[0]).toMatchObject({
+      primaryAssetStatus: 'READY',
+      primaryAssetRequest: {
+        canonicalEntity: draft(23).correctAnswer,
+        entity: draft(23).correctAnswer,
+      },
+    });
     expectSafeResponse(missing.body);
   });
 

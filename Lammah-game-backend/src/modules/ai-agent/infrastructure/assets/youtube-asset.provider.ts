@@ -10,6 +10,8 @@ import {
   AssetProvider,
   AssetRequest,
 } from '../../contracts/asset-provider.interface';
+import { evaluateAssetRelevance } from '../../contracts/asset-relevance';
+import { entityFirstSearchPolicy } from '../../application/entity-first-search.policy';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,6 +21,7 @@ export type AssetProviderStep =
   | 'select-video'
   | 'download'
   | 'trim'
+  | 'inspect'
   | 'store'
   | 'image-search';
 
@@ -30,6 +33,50 @@ type CommandResult = {
 type SearchResult = {
   sourceUrl: string;
   searchQuery: string;
+  title: string;
+  channel?: string;
+  durationSeconds?: number;
+  relevanceScore: number;
+  queryCount: number;
+  candidateCount: number;
+  relevanceRejections: Record<string, number>;
+};
+type YouTubeCandidate = {
+  sourceUrl: string;
+  title: string;
+  description?: string;
+  channel?: string;
+  durationSeconds?: number;
+  tags: string[];
+};
+type RankedYouTubeCandidate = SearchResult & {
+  rawSearchResultCount: number;
+  deduplicatedVideoCount: number;
+  metadataAcceptedCount: number;
+};
+export type VoiceWindowAnalysis = {
+  startSeconds: number;
+  silenceSeconds: number;
+  rmsDb?: number;
+  peakDb?: number;
+  dynamicRangeDb?: number;
+  zeroCrossingRate?: number;
+  classification:
+    'silent' | 'music-likely' | 'speech-likely' | 'audible-uncertain';
+  score: number;
+  accepted: boolean;
+};
+
+export type VoiceSearchPlan = {
+  entity: string;
+  aliases: string[];
+  franchise?: string;
+  language?: string;
+  contextTerms: string[];
+  requiredTerms: string[];
+  optionalTerms: string[];
+  queries: string[];
+  rejectedQueryCount: number;
 };
 
 export class AssetProviderStepError extends Error {
@@ -59,29 +106,90 @@ export class YouTubeAssetProvider implements AssetProvider {
   }
 
   supports(assetRequest: AssetRequest): boolean {
+    return this.support(assetRequest).supported;
+  }
+
+  support(assetRequest: AssetRequest) {
     const configured = this.configService.get<string>(
       'ALLOW_YOUTUBE_ASSET_DOWNLOADS',
     );
     const downloadsAllowed = configured
       ? configured.toLowerCase() === 'true'
       : this.configService.get<string>('NODE_ENV') !== 'production';
-    return (
-      downloadsAllowed &&
-      assetRequest.type === 'audio' &&
-      (assetRequest.provider ?? '').toLowerCase() === 'youtube' &&
-      (this.readString(assetRequest.entity).length > 0 ||
-        this.readString(assetRequest.originalName).length > 0 ||
-        this.readString(assetRequest.localizedName).length > 0 ||
-        this.readString(assetRequest.query).length > 0)
-    );
+    if (!downloadsAllowed)
+      return {
+        supported: false,
+        reason: 'YouTube asset downloads are disabled by runtime configuration',
+      };
+    if (assetRequest.type !== 'audio')
+      return {
+        supported: false,
+        reason: `Expected audio request; received ${assetRequest.type}`,
+      };
+    if ((assetRequest.provider ?? '').toLowerCase() !== 'youtube')
+      return {
+        supported: false,
+        reason: `Expected youtube provider; received ${assetRequest.provider ?? 'unspecified'}`,
+      };
+    if (
+      !['music', 'voice', 'dialogue', 'speech'].includes(
+        assetRequest.mediaIntent ?? '',
+      )
+    )
+      return {
+        supported: false,
+        reason: `Unsupported mediaIntent: ${assetRequest.mediaIntent ?? 'missing'}`,
+      };
+    if (
+      assetRequest.gameMode === 'identifyVoice' &&
+      !this.readString(assetRequest.entity)
+    )
+      return {
+        supported: false,
+        reason:
+          'VOICE_ENTITY_REQUIRED: identifyVoice requires a concrete entity',
+      };
+    if (
+      assetRequest.mediaIntent === 'music' &&
+      !this.readString(assetRequest.title ?? assetRequest.entity)
+    )
+      return { supported: false, reason: 'MUSIC_TITLE_REQUIRED' };
+    if (
+      assetRequest.mediaIntent === 'music' &&
+      assetRequest.gameMode === 'identifySong' &&
+      !this.readString(assetRequest.artist)
+    )
+      return { supported: false, reason: 'MUSIC_ARTIST_REQUIRED' };
+    if (
+      ![
+        assetRequest.entity,
+        assetRequest.originalName,
+        assetRequest.localizedName,
+        assetRequest.query,
+        assetRequest.title,
+      ].some((value) => this.readString(value).length > 0)
+    )
+      return {
+        supported: false,
+        reason: 'Audio request has no searchable entity or title metadata',
+      };
+    return { supported: true };
   }
 
   async process(assetRequest: AssetRequest): Promise<AssetMetadata> {
     if (!this.supports(assetRequest)) {
-      throw new Error('YouTube provider only supports audio requests');
+      throw new Error(
+        this.support(assetRequest).reason ??
+          'Unsupported YouTube asset request',
+      );
     }
 
-    const searchCandidates = this.buildSearchCandidates(assetRequest);
+    const voicePlan =
+      assetRequest.mediaIntent === 'music'
+        ? undefined
+        : this.buildVoiceSearchPlan(assetRequest);
+    const searchCandidates =
+      voicePlan?.queries ?? this.buildSearchCandidates(assetRequest);
     const duration = this.normalizeDuration(assetRequest.duration);
     const mediaKey = `question-assets/audio/${randomUUID()}.m4a`;
     const audioDirectory = join(this.uploadsRoot, 'question-assets', 'audio');
@@ -94,7 +202,20 @@ export class YouTubeAssetProvider implements AssetProvider {
       this.ytDlpBinary = await this.resolveBinary('yt-dlp', '/usr/bin/yt-dlp');
       this.ffmpegBinary = await this.resolveBinary('ffmpeg', '/usr/bin/ffmpeg');
 
-      const { sourceUrl, searchQuery } = await this.search(searchCandidates);
+      if (assetRequest.mediaIntent !== 'music') {
+        return await this.processVoiceCandidates(
+          assetRequest,
+          voicePlan!,
+          searchCandidates,
+          duration,
+          outputPath,
+          mediaKey,
+          tempBasePath,
+        );
+      }
+
+      const selected = await this.search(searchCandidates, assetRequest);
+      const { sourceUrl, searchQuery } = selected;
       const sourcePattern = `${tempBasePath}.%(ext)s`;
       await this.runCommand('download', this.ytDlpBinary, [
         sourceUrl,
@@ -108,8 +229,17 @@ export class YouTubeAssetProvider implements AssetProvider {
       ]);
 
       const sourcePath = `${tempBasePath}.m4a`;
+      const sourceDuration = await this.probeDuration(sourcePath);
+      const musicWindow = await this.selectMusicWindow(
+        sourcePath,
+        sourceDuration,
+        duration,
+        tempBasePath,
+      );
       await this.runCommand('trim', this.ffmpegBinary, [
         '-y',
+        '-ss',
+        String(musicWindow.startSeconds),
         '-i',
         sourcePath,
         '-t',
@@ -132,6 +262,23 @@ export class YouTubeAssetProvider implements AssetProvider {
         searchQuery,
         provider: 'youtube',
         type: 'audio',
+        metadata: {
+          title: selected.title,
+          channel: selected.channel,
+          sourceDurationSeconds: selected.durationSeconds,
+          relevanceScore: selected.relevanceScore,
+          validation: 'metadata-before-download-and-ffmpeg-decode',
+          entityUsed: voicePlan?.entity,
+          franchiseUsed: voicePlan?.franchise,
+          queryCount: selected.queryCount,
+          rejectedQueryCount: voicePlan?.rejectedQueryCount ?? 0,
+          candidateCount: selected.candidateCount,
+          relevanceRejections: selected.relevanceRejections,
+          selectedQuery: selected.searchQuery,
+          selectedWindowStartSeconds: musicWindow.startSeconds,
+          windowsScanned: musicWindow.windowsScanned,
+          musicWindowScore: musicWindow.score,
+        },
       };
     } finally {
       await rm(`${tempBasePath}.m4a`, { force: true });
@@ -140,52 +287,623 @@ export class YouTubeAssetProvider implements AssetProvider {
     }
   }
 
-  private buildSearchCandidates(assetRequest: AssetRequest): string[] {
-    const entity = this.readString(assetRequest.entity);
-    const franchise = this.readString(assetRequest.franchise);
+  buildSearchCandidates(assetRequest: AssetRequest): string[] {
+    return assetRequest.mediaIntent === 'music'
+      ? this.buildMusicSearchCandidates(assetRequest)
+      : this.buildVoiceSearchPlan(assetRequest).queries;
+  }
+
+  private buildMusicSearchCandidates(assetRequest: AssetRequest): string[] {
+    const title =
+      this.readString(assetRequest.title) ||
+      this.readString(assetRequest.entity) ||
+      this.readString(assetRequest.originalName) ||
+      this.readString(assetRequest.localizedName);
+    const artist = this.readString(assetRequest.artist);
+    if (!title || !artist) return [];
+    const titleAliases = Array.isArray(assetRequest.aliases)
+      ? assetRequest.aliases.filter(
+          (value): value is string => typeof value === 'string',
+        )
+      : [];
+    const artistAliases = Array.isArray(assetRequest.artistAliases)
+      ? assetRequest.artistAliases.filter(
+          (value): value is string => typeof value === 'string',
+        )
+      : [];
+    const alternateTitle = titleAliases.find(
+      (alias) =>
+        this.normalizeSearchText(alias) !== this.normalizeSearchText(title),
+    );
+    const alternateArtist = artistAliases.find(
+      (alias) =>
+        this.normalizeSearchText(alias) !== this.normalizeSearchText(artist),
+    );
+    return Array.from(
+      new Set(
+        [
+          [artist, title, 'official audio'],
+          [artist, title, 'official'],
+          [artist, title, 'lyrics'],
+          [title, artist, 'Topic'],
+          [artist, title],
+          alternateTitle ? [artist, alternateTitle] : [],
+          alternateArtist ? [alternateArtist, title] : [],
+        ]
+          .map((parts) => this.joinSearchParts(parts))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  buildVoiceSearchPlan(assetRequest: AssetRequest): VoiceSearchPlan {
+    const safePlan = entityFirstSearchPolicy.create(assetRequest);
+    const entity = safePlan.canonicalEntity;
+    const franchise = safePlan.franchise;
     const language = this.readString(assetRequest.language);
-    const originalName = this.readString(assetRequest.originalName);
-    const localizedName = this.readString(assetRequest.localizedName);
     const englishTitle = this.readString(assetRequest.englishTitle);
     const arabicTitle = this.readString(assetRequest.arabicTitle);
-    const speaker = this.readString(assetRequest.speaker);
-    const context = this.readString(assetRequest.context);
-    const legacyQuery = this.readString(assetRequest.query);
-    const primaryName = entity || originalName || localizedName || speaker;
-    const title = franchise || englishTitle || arabicTitle;
-    const candidates = [
-      [primaryName, language, 'voice'],
-      [title, primaryName, 'voice'],
-      [primaryName, 'fight'],
-      [primaryName, 'speech'],
-      [primaryName, 'scene'],
-      [title, primaryName, 'scene'],
-      [originalName, language, 'voice'],
-      [title, originalName, 'voice'],
-      [localizedName, language, 'voice'],
-      [arabicTitle, localizedName || entity, 'مشهد'],
-      [englishTitle, primaryName, 'voice'],
-      [primaryName, context],
-      [title, primaryName, context],
-      [legacyQuery],
-    ]
-      .map((parts) => this.joinSearchParts(parts))
-      .filter(Boolean);
+    const aliases = safePlan.aliases;
+    const title = franchise || englishTitle || arabicTitle || undefined;
+    const languageQueries = safePlan.languagePreferences.map((preferred) => [
+      entity,
+      title,
+      preferred === 'Japanese' ? 'Japanese voice' : `${preferred} dub`,
+    ]);
+    const shortContext = safePlan.optionalContextTerms.slice(0, 2).join(' ');
+    const rawCandidates = entity
+      ? [
+          [entity, title, 'voice'],
+          [entity, title, 'voice scene'],
+          [entity, title, 'voice lines'],
+          [entity, title, 'dialogue'],
+          [entity, title, 'scenes'],
+          ...languageQueries,
+          [aliases.find((alias) => alias !== entity), title, 'voice lines'],
+          shortContext ? [entity, title, shortContext, 'scene'] : [],
+        ]
+          .map((parts) => this.joinSearchParts(parts))
+          .filter(Boolean)
+      : [];
+    const validated = entityFirstSearchPolicy.queries(
+      safePlan,
+      rawCandidates,
+      'primary',
+    );
+    return {
+      entity,
+      aliases,
+      franchise: title,
+      language: language || undefined,
+      contextTerms: safePlan.optionalContextTerms,
+      requiredTerms: [entity, title].filter(Boolean) as string[],
+      optionalTerms: [
+        'voice',
+        'dialogue',
+        'scene',
+        language,
+        ...safePlan.optionalContextTerms,
+      ].filter(Boolean) as string[],
+      queries: validated.queries,
+      rejectedQueryCount: validated.rejectedCodes.length,
+    };
+  }
 
-    return Array.from(new Set(candidates));
+  private containsNormalizedPhrase(value: string, term: string): boolean {
+    const normalizedValue = this.normalizeSearchText(value);
+    const normalizedTerm = this.normalizeSearchText(term);
+    return Boolean(
+      normalizedTerm && ` ${normalizedValue} `.includes(` ${normalizedTerm} `),
+    );
+  }
+
+  private normalizeSearchText(value: string): string {
+    return value
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+      .toLowerCase();
   }
 
   private readString(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
   }
 
-  private async search(candidates: string[]): Promise<SearchResult> {
+  buildVoiceWindowStarts(
+    sourceDuration: number,
+    clipDuration: number,
+  ): number[] {
+    const lastStart = Math.max(0, sourceDuration - clipDuration - 2);
+    if (sourceDuration <= clipDuration + 2) return [0];
+    const ratios =
+      sourceDuration > 30 ? [0.1, 0.25, 0.4, 0.55, 0.7] : [0.12, 0.35, 0.58];
+    return Array.from(
+      new Set(
+        ratios.map(
+          (ratio) =>
+            Math.round(
+              Math.min(
+                lastStart,
+                Math.max(sourceDuration > 30 ? 5 : 1, sourceDuration * ratio),
+              ) * 10,
+            ) / 10,
+        ),
+      ),
+    );
+  }
+
+  buildMusicWindowStarts(
+    sourceDuration: number,
+    clipDuration: number,
+  ): number[] {
+    if (sourceDuration <= clipDuration) return [0];
+    const lastStart = Math.max(0, sourceDuration - clipDuration - 2);
+    return Array.from(
+      new Set(
+        [0.2, 0.35, 0.5, 0.65].map((ratio) =>
+          Math.round(Math.min(lastStart, sourceDuration * ratio)),
+        ),
+      ),
+    );
+  }
+
+  scoreMusicWindow(
+    startSeconds: number,
+    clipDuration: number,
+    diagnosticOutput: string,
+  ) {
+    const analysis = this.scoreVoiceWindow(
+      startSeconds,
+      clipDuration,
+      diagnosticOutput,
+    );
+    const silenceRatio = analysis.silenceSeconds / clipDuration;
+    return {
+      ...analysis,
+      accepted:
+        silenceRatio <= 0.35 &&
+        analysis.rmsDb !== undefined &&
+        analysis.rmsDb > -38,
+      score:
+        analysis.score +
+        (analysis.classification === 'music-likely' ? 30 : 0) -
+        silenceRatio * 60,
+    };
+  }
+
+  private async selectMusicWindow(
+    sourcePath: string,
+    sourceDuration: number,
+    clipDuration: number,
+    tempBasePath: string,
+  ) {
+    const analyses: ReturnType<YouTubeAssetProvider['scoreMusicWindow']>[] = [];
+    for (const [index, start] of this.buildMusicWindowStarts(
+      sourceDuration,
+      clipDuration,
+    ).entries()) {
+      const windowPath = `${tempBasePath}-music-window-${index}.m4a`;
+      try {
+        await this.runCommand(
+          'trim',
+          this.ffmpegBinary,
+          [
+            '-y',
+            '-ss',
+            String(start),
+            '-i',
+            sourcePath,
+            '-t',
+            String(clipDuration),
+            '-c:a',
+            'aac',
+            windowPath,
+          ],
+          { logAsPipelineStep: false },
+        );
+        const { stderr } = await this.runCommand(
+          'inspect',
+          this.ffmpegBinary,
+          [
+            '-i',
+            windowPath,
+            '-af',
+            'silencedetect=noise=-40dB:d=0.3,astats=metadata=1:reset=0',
+            '-f',
+            'null',
+            '-',
+          ],
+          { logAsPipelineStep: false },
+        );
+        analyses.push(this.scoreMusicWindow(start, clipDuration, stderr));
+      } finally {
+        await rm(windowPath, { force: true });
+      }
+    }
+    const selected = analyses
+      .filter((analysis) => analysis.accepted)
+      .sort((left, right) => right.score - left.score)[0];
+    if (!selected)
+      throw new AssetProviderStepError(
+        'inspect',
+        'No audible music window passed validation',
+        {
+          failureCode: 'MUSIC_NO_VALID_WINDOW',
+          windowsScanned: analyses.length,
+        },
+      );
+    return { ...selected, windowsScanned: analyses.length };
+  }
+
+  scoreVoiceWindow(
+    startSeconds: number,
+    clipDuration: number,
+    diagnosticOutput: string,
+  ): VoiceWindowAnalysis {
+    const silenceSeconds = Array.from(
+      diagnosticOutput.matchAll(/silence_duration:\s*([\d.]+)/g),
+      (match) => Number(match[1]),
+    )
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    const finiteMetric = (pattern: RegExp) => {
+      const values = Array.from(diagnosticOutput.matchAll(pattern), (match) =>
+        Number(match[1]),
+      ).filter(Number.isFinite);
+      return values.at(-1);
+    };
+    const rmsDb = finiteMetric(/RMS level dB:\s*(-?[\d.]+)/g);
+    const peakDb = finiteMetric(/Peak level dB:\s*(-?[\d.]+)/g);
+    const dynamicRangeDb = finiteMetric(/Dynamic range:\s*([\d.]+)/g);
+    const zeroCrossingRate = finiteMetric(/Zero crossings rate:\s*([\d.]+)/g);
+    const audibleRatio = Math.max(0, 1 - silenceSeconds / clipDuration);
+    let score = Math.round(audibleRatio * 60);
+    if (rmsDb !== undefined && rmsDb >= -42 && rmsDb <= -8) score += 25;
+    if (peakDb !== undefined && peakDb >= -20 && peakDb <= 0) score += 15;
+    if (dynamicRangeDb !== undefined && dynamicRangeDb >= 6) score += 10;
+    if (
+      zeroCrossingRate !== undefined &&
+      zeroCrossingRate >= 0.005 &&
+      zeroCrossingRate <= 0.25
+    )
+      score += 10;
+    const classification =
+      audibleRatio < 0.55
+        ? 'silent'
+        : dynamicRangeDb !== undefined && dynamicRangeDb < 4
+          ? 'music-likely'
+          : dynamicRangeDb !== undefined && zeroCrossingRate !== undefined
+            ? 'speech-likely'
+            : 'audible-uncertain';
+    const accepted =
+      classification !== 'silent' &&
+      classification !== 'music-likely' &&
+      rmsDb !== undefined &&
+      score >= 55;
+    return {
+      startSeconds,
+      silenceSeconds: Math.round(silenceSeconds * 100) / 100,
+      rmsDb,
+      peakDb,
+      dynamicRangeDb,
+      zeroCrossingRate,
+      classification,
+      score,
+      accepted,
+    };
+  }
+
+  private async processVoiceCandidates(
+    request: AssetRequest,
+    plan: VoiceSearchPlan,
+    queries: string[],
+    duration: number,
+    outputPath: string,
+    mediaKey: string,
+    tempBasePath: string,
+  ): Promise<AssetMetadata> {
+    const { candidates, diagnostics } = await this.searchVoiceCandidates(
+      queries,
+      request,
+    );
+    let downloadedCandidateCount = 0;
+    let windowsScanned = 0;
+    let speechWindowsFound = 0;
+    let silentWindowsRejected = 0;
+    let musicDominantWindowsRejected = 0;
+    const candidateFailures: Array<{ title: string; failureCode: string }> = [];
+
+    for (const [candidateIndex, selected] of candidates.slice(0, 3).entries()) {
+      const candidateBase = `${tempBasePath}-${candidateIndex}`;
+      const sourcePath = `${candidateBase}.m4a`;
+      try {
+        await this.runCommand('download', this.ytDlpBinary, [
+          selected.sourceUrl,
+          '-f',
+          'bestaudio',
+          '--extract-audio',
+          '--audio-format',
+          'm4a',
+          '-o',
+          `${candidateBase}.%(ext)s`,
+        ]);
+        downloadedCandidateCount += 1;
+        const sourceDuration =
+          selected.durationSeconds ?? (await this.probeDuration(sourcePath));
+        const analyses: VoiceWindowAnalysis[] = [];
+        for (const [windowIndex, start] of this.buildVoiceWindowStarts(
+          sourceDuration,
+          duration,
+        ).entries()) {
+          const windowPath = `${candidateBase}-window-${windowIndex}.m4a`;
+          try {
+            await this.runCommand(
+              'trim',
+              this.ffmpegBinary,
+              [
+                '-y',
+                '-ss',
+                String(start),
+                '-i',
+                sourcePath,
+                '-t',
+                String(duration),
+                '-c:a',
+                'aac',
+                windowPath,
+              ],
+              { logAsPipelineStep: false },
+            );
+            const { stderr } = await this.runCommand(
+              'inspect',
+              this.ffmpegBinary,
+              [
+                '-i',
+                windowPath,
+                '-af',
+                'silencedetect=noise=-40dB:d=0.3,astats=metadata=1:reset=0',
+                '-f',
+                'null',
+                '-',
+              ],
+              { logAsPipelineStep: false },
+            );
+            const analysis = this.scoreVoiceWindow(start, duration, stderr);
+            analyses.push(analysis);
+            windowsScanned += 1;
+            if (analysis.accepted) speechWindowsFound += 1;
+            else if (analysis.silenceSeconds / duration > 0.45)
+              silentWindowsRejected += 1;
+            else if (analysis.classification === 'music-likely')
+              musicDominantWindowsRejected += 1;
+          } finally {
+            await rm(windowPath, { force: true });
+          }
+        }
+        const best = analyses
+          .filter((analysis) => analysis.accepted)
+          .sort((left, right) => right.score - left.score)[0];
+        if (!best) {
+          candidateFailures.push({
+            title: this.safeTitle(selected.title),
+            failureCode: analyses.every(
+              (analysis) => analysis.silenceSeconds / duration > 0.45,
+            )
+              ? 'VOICE_ALL_WINDOWS_SILENT'
+              : analyses.length > 0 &&
+                  analyses.every(
+                    (analysis) => analysis.classification === 'music-likely',
+                  )
+                ? 'VOICE_MUSIC_DOMINANT_WINDOWS'
+                : 'VOICE_NO_SPEECH_WINDOW',
+          });
+          continue;
+        }
+        await this.runCommand('trim', this.ffmpegBinary, [
+          '-y',
+          '-ss',
+          String(best.startSeconds),
+          '-i',
+          sourcePath,
+          '-t',
+          String(duration),
+          '-c:a',
+          'aac',
+          outputPath,
+        ]);
+        await this.assertFileExists('store', outputPath);
+        return {
+          localPath: outputPath,
+          url: `${this.appBaseUrl.replace(/\/+$/, '')}/uploads/${mediaKey}`,
+          duration,
+          source: 'youtube',
+          sourceUrl: selected.sourceUrl,
+          searchQuery: selected.searchQuery,
+          provider: 'youtube',
+          type: 'audio',
+          metadata: {
+            title: this.safeTitle(selected.title),
+            channel: selected.channel,
+            sourceDurationSeconds: sourceDuration,
+            relevanceScore: selected.relevanceScore,
+            entityUsed: plan.entity,
+            franchiseUsed: plan.franchise,
+            preferredLanguages: this.preferredLanguages(request.language),
+            selectedQuery: selected.searchQuery,
+            selectedWindowStartSeconds: best.startSeconds,
+            voiceWindowScore: best.score,
+            silenceSeconds: best.silenceSeconds,
+            validation: 'entity-metadata-and-bounded-audible-window',
+            ...diagnostics,
+            downloadedCandidateCount,
+            windowsScanned,
+            speechWindowsFound,
+            silentWindowsRejected,
+            musicDominantWindowsRejected,
+          },
+        };
+      } catch (error) {
+        candidateFailures.push({
+          title: this.safeTitle(selected.title),
+          failureCode:
+            error instanceof AssetProviderStepError && error.step === 'download'
+              ? 'VOICE_VIDEO_DOWNLOAD_FAILED'
+              : 'VOICE_CLIP_EXTRACTION_FAILED',
+        });
+      } finally {
+        await rm(sourcePath, { force: true });
+        await rm(`${candidateBase}.webm`, { force: true });
+        await rm(`${candidateBase}.opus`, { force: true });
+      }
+    }
+    throw new AssetProviderStepError(
+      'trim',
+      'No entity-relevant YouTube video contained an acceptable audible voice window',
+      {
+        failureCode: 'VOICE_NO_VALID_VIDEO_AFTER_SEARCH',
+        ...diagnostics,
+        downloadedCandidateCount,
+        windowsScanned,
+        speechWindowsFound,
+        silentWindowsRejected,
+        musicDominantWindowsRejected,
+        candidateFailures,
+      },
+    );
+  }
+
+  private async searchVoiceCandidates(
+    queries: string[],
+    request: AssetRequest,
+  ): Promise<{
+    candidates: RankedYouTubeCandidate[];
+    diagnostics: Record<string, unknown>;
+  }> {
+    const pool = new Map<string, RankedYouTubeCandidate>();
+    const seenVideoUrls = new Set<string>();
+    const relevanceRejections: Record<string, number> = {};
+    let rawSearchResultCount = 0;
+    for (const query of queries.slice(0, 6)) {
+      try {
+        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
+          `ytsearch5:${query}`,
+          '--dump-json',
+          '--skip-download',
+        ]);
+        for (const candidate of this.parseSearchResults(stdout)) {
+          rawSearchResultCount += 1;
+          if (seenVideoUrls.has(candidate.sourceUrl)) continue;
+          seenVideoUrls.add(candidate.sourceUrl);
+          const relevance = evaluateAssetRelevance(request, {
+            provider: 'youtube',
+            assetType: 'audio',
+            mediaIntent: request.mediaIntent,
+            title: candidate.title,
+            description: candidate.description,
+            mediaUrl: candidate.sourceUrl,
+            queryUsed: query,
+            durationSeconds: candidate.durationSeconds,
+            metadataTerms: [candidate.channel ?? '', ...candidate.tags],
+          });
+          if (!relevance.accepted) {
+            for (const code of relevance.rejectionCodes)
+              relevanceRejections[code] = (relevanceRejections[code] ?? 0) + 1;
+            continue;
+          }
+          pool.set(candidate.sourceUrl, {
+            ...candidate,
+            searchQuery: query,
+            relevanceScore: relevance.score,
+            queryCount: Math.min(queries.length, 6),
+            candidateCount: 0,
+            relevanceRejections,
+            rawSearchResultCount: 0,
+            deduplicatedVideoCount: 0,
+            metadataAcceptedCount: 0,
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+    const candidates = [...pool.values()]
+      .sort((left, right) => right.relevanceScore - left.relevanceScore)
+      .slice(0, 5);
+    const diagnostics = {
+      queryStrategyCount: Math.min(queries.length, 6),
+      rawSearchResultCount,
+      deduplicatedVideoCount: seenVideoUrls.size,
+      metadataAcceptedCount: pool.size,
+      relevanceRejections,
+    };
+    if (!candidates.length)
+      throw new AssetProviderStepError(
+        'search',
+        'No YouTube result passed entity and voice metadata validation',
+        { failureCode: 'VOICE_NO_VALID_VIDEO_AFTER_SEARCH', ...diagnostics },
+      );
+    return { candidates, diagnostics };
+  }
+
+  private async probeDuration(filePath: string): Promise<number> {
+    const { stdout } = await this.runCommand(
+      'inspect',
+      'ffprobe',
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ],
+      { logAsPipelineStep: false },
+    );
+    const duration = Number(stdout.trim());
+    if (!Number.isFinite(duration) || duration <= 0)
+      throw new AssetProviderStepError(
+        'inspect',
+        'Downloaded voice candidate duration was invalid',
+        { failureCode: 'VOICE_CLIP_EXTRACTION_FAILED' },
+      );
+    return duration;
+  }
+
+  private preferredLanguages(language: unknown): string[] {
+    const value = this.readString(language).toLowerCase();
+    return Array.from(
+      new Set([
+        ...(/japanese|日本|ja\b/.test(value) ? ['ja'] : []),
+        ...(/english|en\b/.test(value) ? ['en'] : []),
+        ...(/arabic|عرب|ar\b/.test(value) ? ['ar'] : []),
+      ]),
+    );
+  }
+
+  private safeTitle(title: string): string {
+    return title
+      .replace(/[\r\n\t]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+  }
+
+  private async search(
+    candidates: string[],
+    request: AssetRequest,
+  ): Promise<SearchResult> {
+    if (request.mediaIntent === 'music')
+      return this.searchMusicCandidates(candidates, request);
     const attemptedQueries: Array<{
       query: string;
       reason?: string;
       stdout?: string;
       stderr?: string;
     }> = [];
+    const relevanceRejections: Record<string, number> = {};
+    let candidateCount = 0;
 
     if (!candidates.length) {
       throw new AssetProviderStepError(
@@ -197,25 +915,44 @@ export class YouTubeAssetProvider implements AssetProvider {
     for (const query of candidates) {
       try {
         this.logger.log(`Trying YouTube search candidate: "${query}"`);
-        const { stdout, stderr } = await this.runCommand(
-          'search',
-          this.ytDlpBinary,
-          [`ytsearch1:${query}`, '--print', 'webpage_url', '--skip-download'],
-        );
-
-        this.logger.log('Step 2: Select video');
-        const sourceUrl = stdout.trim().split('\n')[0];
-
-        if (!sourceUrl) {
+        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
+          `ytsearch3:${query}`,
+          '--dump-json',
+          '--skip-download',
+        ]);
+        const parsedCandidates = this.parseSearchResults(stdout);
+        candidateCount += parsedCandidates.length;
+        const ranked = parsedCandidates
+          .map((candidate) => ({
+            candidate,
+            relevance: evaluateAssetRelevance(request, {
+              provider: 'youtube',
+              assetType: 'audio',
+              mediaIntent: request.mediaIntent,
+              title: candidate.title,
+              description: candidate.description,
+              mediaUrl: candidate.sourceUrl,
+              queryUsed: query,
+              durationSeconds: candidate.durationSeconds,
+              metadataTerms: [candidate.channel ?? '', ...candidate.tags],
+            }),
+          }))
+          .filter(({ relevance }) => {
+            if (relevance.accepted) return true;
+            for (const code of relevance.rejectionCodes)
+              relevanceRejections[code] = (relevanceRejections[code] ?? 0) + 1;
+            return false;
+          })
+          .sort((a, b) => b.relevance.score - a.relevance.score);
+        const best = ranked[0];
+        if (!best) {
           attemptedQueries.push({
             query,
-            reason: 'yt-dlp returned no video URL',
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
+            reason: 'No result passed semantic relevance validation',
           });
           continue;
         }
-
+        const sourceUrl = best.candidate.sourceUrl;
         this.logger.log(
           `Step 2 complete: Select video (${sourceUrl}) using query "${query}"`,
         );
@@ -223,6 +960,13 @@ export class YouTubeAssetProvider implements AssetProvider {
         return {
           sourceUrl,
           searchQuery: query,
+          title: best.candidate.title,
+          channel: best.candidate.channel,
+          durationSeconds: best.candidate.durationSeconds,
+          relevanceScore: best.relevance.score,
+          queryCount: attemptedQueries.length + 1,
+          candidateCount,
+          relevanceRejections,
         };
       } catch (error) {
         attemptedQueries.push({
@@ -241,8 +985,131 @@ export class YouTubeAssetProvider implements AssetProvider {
       `No valid YouTube video found after ${attemptedQueries.length} search strategies`,
       this.withDevelopmentOutput({
         attemptedQueries,
+        failureCode: 'MEDIA_RELEVANCE_VALIDATION_FAILED',
+        relevanceRejections,
       }),
     );
+  }
+
+  private async searchMusicCandidates(
+    queries: string[],
+    request: AssetRequest,
+  ): Promise<SearchResult> {
+    if (!queries.length)
+      throw new AssetProviderStepError(
+        'search',
+        'Canonical song title and artist are required',
+        { failureCode: 'MUSIC_TITLE_ARTIST_MISMATCH' },
+      );
+    const pool = new Map<
+      string,
+      { candidate: YouTubeCandidate; query: string; score: number }
+    >();
+    const rejectionCodes: Record<string, number> = {};
+    let rawSearchResultCount = 0;
+    for (const query of queries.slice(0, 5)) {
+      try {
+        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
+          `ytsearch5:${query}`,
+          '--dump-json',
+          '--skip-download',
+        ]);
+        for (const candidate of this.parseSearchResults(stdout)) {
+          rawSearchResultCount += 1;
+          const relevance = evaluateAssetRelevance(request, {
+            provider: 'youtube',
+            assetType: 'audio',
+            mediaIntent: 'music',
+            title: candidate.title,
+            description: candidate.description,
+            mediaUrl: candidate.sourceUrl,
+            queryUsed: query,
+            durationSeconds: candidate.durationSeconds,
+            metadataTerms: [candidate.channel ?? '', ...candidate.tags],
+          });
+          if (!relevance.accepted) {
+            for (const code of relevance.rejectionCodes)
+              rejectionCodes[code] = (rejectionCodes[code] ?? 0) + 1;
+            continue;
+          }
+          const providerText = `${candidate.title} ${candidate.channel ?? ''}`;
+          const score =
+            relevance.score +
+            (/official (audio|video)|قناه رسميه/i.test(providerText) ? 30 : 0) +
+            (/\btopic\b/i.test(providerText) ? 25 : 0) +
+            (/lyrics|كلمات/i.test(providerText) ? 5 : 0);
+          const previous = pool.get(candidate.sourceUrl);
+          if (!previous || score > previous.score)
+            pool.set(candidate.sourceUrl, { candidate, query, score });
+        }
+      } catch {
+        continue;
+      }
+    }
+    const selected = [...pool.values()].sort(
+      (left, right) => right.score - left.score,
+    )[0];
+    if (!selected)
+      throw new AssetProviderStepError(
+        'search',
+        'No YouTube result matched the canonical song title and artist',
+        {
+          failureCode: 'MUSIC_NO_VALID_YOUTUBE_ASSET',
+          queryStrategyCount: Math.min(queries.length, 5),
+          rawSearchResultCount,
+          deduplicatedCandidateCount: pool.size,
+          rejectionCodes,
+        },
+      );
+    return {
+      sourceUrl: selected.candidate.sourceUrl,
+      searchQuery: selected.query,
+      title: selected.candidate.title,
+      channel: selected.candidate.channel,
+      durationSeconds: selected.candidate.durationSeconds,
+      relevanceScore: selected.score,
+      queryCount: Math.min(queries.length, 5),
+      candidateCount: pool.size,
+      relevanceRejections: rejectionCodes,
+    };
+  }
+
+  parseSearchResults(stdout: string): YouTubeCandidate[] {
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const value = JSON.parse(line) as Record<string, unknown>;
+          const sourceUrl =
+            this.readString(value.webpage_url) ||
+            (this.readString(value.id)
+              ? `https://www.youtube.com/watch?v=${this.readString(value.id)}`
+              : '');
+          const title = this.readString(value.title);
+          if (!sourceUrl || !title) return [];
+          return [
+            {
+              sourceUrl,
+              title,
+              description: this.readString(value.description),
+              channel:
+                this.readString(value.channel) ||
+                this.readString(value.uploader),
+              durationSeconds:
+                typeof value.duration === 'number' ? value.duration : undefined,
+              tags: Array.isArray(value.tags)
+                ? value.tags
+                    .filter((tag): tag is string => typeof tag === 'string')
+                    .slice(0, 20)
+                : [],
+            },
+          ];
+        } catch {
+          return [];
+        }
+      });
   }
 
   private async resolveBinary(
@@ -347,6 +1214,7 @@ export class YouTubeAssetProvider implements AssetProvider {
       'select-video': 'Step 2: Select video',
       download: 'Step 3: Download audio',
       trim: 'Step 4: Trim using ffmpeg',
+      inspect: 'Inspect audio window',
       store: 'Step 5: Store locally',
       'image-search': 'Search image provider',
     };

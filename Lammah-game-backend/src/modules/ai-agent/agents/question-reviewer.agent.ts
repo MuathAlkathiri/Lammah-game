@@ -16,7 +16,7 @@ export class QuestionReviewerAgent implements LlmAgent<
   constructor(private readonly llm: LlmClientService) {}
   execute(input: Record<string, unknown>, context: AgentExecutionContext) {
     return this.llm.completeJson<QuestionReview>(
-      `Review this completed Arabic party-game draft. Check clarity, difficulty, mode consistency, verified metadata, leakage, and optional wrong-answer plausibility. Do not publish or save it. Draft: ${JSON.stringify(input)}`,
+      `Review this completed Arabic party-game draft. Score factual correctness, answer uniqueness, difficulty fit, mode consistency, metadata, leakage, wrong-answer plausibility, clarity, conciseness, fun/directness, and game readability as separate concerns. A factually correct question must not score near-perfect if it feels like an exam, contains explanation, asks two things, or takes more than about 6 seconds to read. Hardness must come from knowledge rather than complex wording. Suggest repair but never rewrite facts, publish, or save. Draft: ${JSON.stringify(input)}`,
       context.modelConfig?.temperature ?? 0.1,
     );
   }
