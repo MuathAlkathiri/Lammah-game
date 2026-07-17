@@ -12,6 +12,7 @@ describe('GulfMusicQuestionPolicy', () => {
     expect(policy.isGulfMusicCategory({ categoryName: 'أغاني الخليج' })).toBe(
       true,
     );
+    expect(policy.isGulfMusicCategory({ categoryName: 'اغاني' })).toBe(true);
     expect(policy.parseKnowledge(knowledge)).toHaveLength(2);
   });
 

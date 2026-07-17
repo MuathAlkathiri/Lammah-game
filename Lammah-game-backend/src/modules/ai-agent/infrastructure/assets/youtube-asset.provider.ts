@@ -121,10 +121,10 @@ export class YouTubeAssetProvider implements AssetProvider {
         supported: false,
         reason: 'YouTube asset downloads are disabled by runtime configuration',
       };
-    if (assetRequest.type !== 'audio')
+    if (!['audio', 'video'].includes(assetRequest.type))
       return {
         supported: false,
-        reason: `Expected audio request; received ${assetRequest.type}`,
+        reason: `Expected audio or video request; received ${assetRequest.type}`,
       };
     if ((assetRequest.provider ?? '').toLowerCase() !== 'youtube')
       return {
@@ -132,6 +132,7 @@ export class YouTubeAssetProvider implements AssetProvider {
         reason: `Expected youtube provider; received ${assetRequest.provider ?? 'unspecified'}`,
       };
     if (
+      assetRequest.type === 'audio' &&
       !['music', 'voice', 'dialogue', 'speech'].includes(
         assetRequest.mediaIntent ?? '',
       )
@@ -171,7 +172,7 @@ export class YouTubeAssetProvider implements AssetProvider {
     )
       return {
         supported: false,
-        reason: 'Audio request has no searchable entity or title metadata',
+        reason: 'YouTube request has no searchable entity or title metadata',
       };
     return { supported: true };
   }
@@ -182,6 +183,10 @@ export class YouTubeAssetProvider implements AssetProvider {
         this.support(assetRequest).reason ??
           'Unsupported YouTube asset request',
       );
+    }
+
+    if (assetRequest.type === 'video') {
+      return this.processVideoClip(assetRequest);
     }
 
     const voicePlan =
@@ -217,16 +222,20 @@ export class YouTubeAssetProvider implements AssetProvider {
       const selected = await this.search(searchCandidates, assetRequest);
       const { sourceUrl, searchQuery } = selected;
       const sourcePattern = `${tempBasePath}.%(ext)s`;
-      await this.runCommand('download', this.ytDlpBinary, [
-        sourceUrl,
-        '-f',
-        'bestaudio',
-        '--extract-audio',
-        '--audio-format',
-        'm4a',
-        '-o',
-        sourcePattern,
-      ]);
+      await this.runCommand(
+        'download',
+        this.ytDlpBinary,
+        this.ytDlpArgs([
+          sourceUrl,
+          '-f',
+          'bestaudio',
+          '--extract-audio',
+          '--audio-format',
+          'm4a',
+          '-o',
+          sourcePattern,
+        ]),
+      );
 
       const sourcePath = `${tempBasePath}.m4a`;
       const sourceDuration = await this.probeDuration(sourcePath);
@@ -287,10 +296,130 @@ export class YouTubeAssetProvider implements AssetProvider {
     }
   }
 
+  private async processVideoClip(
+    assetRequest: AssetRequest,
+  ): Promise<AssetMetadata> {
+    const searchCandidates = this.buildVideoSearchCandidates(assetRequest);
+    const duration = this.normalizeDuration(assetRequest.duration);
+    const mediaKey = `question-assets/video/${randomUUID()}.mp4`;
+    const videoDirectory = join(this.uploadsRoot, 'question-assets', 'video');
+    const outputPath = join(this.uploadsRoot, mediaKey);
+    const tempBasePath = join(videoDirectory, `${randomUUID()}-source`);
+
+    await mkdir(videoDirectory, { recursive: true });
+
+    try {
+      this.ytDlpBinary = await this.resolveBinary('yt-dlp', '/usr/bin/yt-dlp');
+      this.ffmpegBinary = await this.resolveBinary('ffmpeg', '/usr/bin/ffmpeg');
+      const selected = await this.search(searchCandidates, assetRequest);
+      const sourcePattern = `${tempBasePath}.%(ext)s`;
+      await this.runCommand(
+        'download',
+        this.ytDlpBinary,
+        this.ytDlpArgs([
+          selected.sourceUrl,
+          '-f',
+          'bv*[height<=720]+ba/b[height<=720]/best',
+          '--merge-output-format',
+          'mp4',
+          '-o',
+          sourcePattern,
+        ]),
+      );
+
+      const sourcePath = `${tempBasePath}.mp4`;
+      const sourceDuration = await this.probeDuration(sourcePath);
+      const startSeconds = this.selectVideoWindowStart(
+        sourceDuration,
+        duration,
+      );
+      await this.runCommand('trim', this.ffmpegBinary, [
+        '-y',
+        '-ss',
+        String(startSeconds),
+        '-i',
+        sourcePath,
+        '-t',
+        String(duration),
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a?',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '28',
+        '-c:a',
+        'aac',
+        '-movflags',
+        '+faststart',
+        outputPath,
+      ]);
+
+      this.logger.log('Step 5: Store locally');
+      await this.assertFileExists('store', outputPath);
+      this.logger.log(`Step 5 complete: Store locally (${outputPath})`);
+
+      return {
+        localPath: outputPath,
+        url: `${this.appBaseUrl.replace(/\/+$/, '')}/uploads/${mediaKey}`,
+        duration,
+        source: 'youtube',
+        sourceUrl: selected.sourceUrl,
+        searchQuery: selected.searchQuery,
+        provider: 'youtube',
+        type: 'video',
+        metadata: {
+          title: selected.title,
+          channel: selected.channel,
+          sourceDurationSeconds: selected.durationSeconds ?? sourceDuration,
+          relevanceScore: selected.relevanceScore,
+          validation: 'entity-metadata-video-clip',
+          queryCount: selected.queryCount,
+          candidateCount: selected.candidateCount,
+          relevanceRejections: selected.relevanceRejections,
+          selectedQuery: selected.searchQuery,
+          selectedWindowStartSeconds: startSeconds,
+        },
+      };
+    } finally {
+      await rm(`${tempBasePath}.mp4`, { force: true });
+      await rm(`${tempBasePath}.webm`, { force: true });
+      await rm(`${tempBasePath}.mkv`, { force: true });
+    }
+  }
+
   buildSearchCandidates(assetRequest: AssetRequest): string[] {
     return assetRequest.mediaIntent === 'music'
       ? this.buildMusicSearchCandidates(assetRequest)
       : this.buildVoiceSearchPlan(assetRequest).queries;
+  }
+
+  private buildVideoSearchCandidates(assetRequest: AssetRequest): string[] {
+    const plan = entityFirstSearchPolicy.create(assetRequest);
+    const entity = plan.canonicalEntity;
+    const franchise = plan.franchise;
+    const context = [
+      ...plan.optionalContextTerms,
+      assetRequest.context,
+      assetRequest.visualHint,
+    ]
+      .map((value) => this.readString(value))
+      .filter(Boolean)
+      .slice(0, 2);
+    const rawCandidates = [
+      [entity, franchise, ...context, 'scene'],
+      [entity, franchise, 'clip'],
+      [entity, franchise, 'best scene'],
+      [entity, franchise],
+      [plan.aliases.find((alias) => alias !== entity), franchise, 'scene'],
+    ]
+      .map((parts) => this.joinSearchParts(parts))
+      .filter(Boolean);
+    return entityFirstSearchPolicy.queries(plan, rawCandidates, 'primary')
+      .queries;
   }
 
   private buildMusicSearchCandidates(assetRequest: AssetRequest): string[] {
@@ -618,16 +747,20 @@ export class YouTubeAssetProvider implements AssetProvider {
       const candidateBase = `${tempBasePath}-${candidateIndex}`;
       const sourcePath = `${candidateBase}.m4a`;
       try {
-        await this.runCommand('download', this.ytDlpBinary, [
-          selected.sourceUrl,
-          '-f',
-          'bestaudio',
-          '--extract-audio',
-          '--audio-format',
-          'm4a',
-          '-o',
-          `${candidateBase}.%(ext)s`,
-        ]);
+        await this.runCommand(
+          'download',
+          this.ytDlpBinary,
+          this.ytDlpArgs([
+            selected.sourceUrl,
+            '-f',
+            'bestaudio',
+            '--extract-audio',
+            '--audio-format',
+            'm4a',
+            '-o',
+            `${candidateBase}.%(ext)s`,
+          ]),
+        );
         downloadedCandidateCount += 1;
         const sourceDuration =
           selected.durationSeconds ?? (await this.probeDuration(sourcePath));
@@ -786,11 +919,16 @@ export class YouTubeAssetProvider implements AssetProvider {
     let rawSearchResultCount = 0;
     for (const query of queries.slice(0, 6)) {
       try {
-        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
-          `ytsearch5:${query}`,
-          '--dump-json',
-          '--skip-download',
-        ]);
+        const { stdout } = await this.runCommand(
+          'search',
+          this.ytDlpBinary,
+          this.ytDlpArgs([
+            `ytsearch5:${query}`,
+            '--flat-playlist',
+            '--dump-json',
+            '--skip-download',
+          ]),
+        );
         for (const candidate of this.parseSearchResults(stdout)) {
           rawSearchResultCount += 1;
           if (seenVideoUrls.has(candidate.sourceUrl)) continue;
@@ -915,11 +1053,16 @@ export class YouTubeAssetProvider implements AssetProvider {
     for (const query of candidates) {
       try {
         this.logger.log(`Trying YouTube search candidate: "${query}"`);
-        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
-          `ytsearch3:${query}`,
-          '--dump-json',
-          '--skip-download',
-        ]);
+        const { stdout } = await this.runCommand(
+          'search',
+          this.ytDlpBinary,
+          this.ytDlpArgs([
+            `ytsearch3:${query}`,
+            '--flat-playlist',
+            '--dump-json',
+            '--skip-download',
+          ]),
+        );
         const parsedCandidates = this.parseSearchResults(stdout);
         candidateCount += parsedCandidates.length;
         const ranked = parsedCandidates
@@ -927,7 +1070,7 @@ export class YouTubeAssetProvider implements AssetProvider {
             candidate,
             relevance: evaluateAssetRelevance(request, {
               provider: 'youtube',
-              assetType: 'audio',
+              assetType: request.type,
               mediaIntent: request.mediaIntent,
               title: candidate.title,
               description: candidate.description,
@@ -1009,11 +1152,16 @@ export class YouTubeAssetProvider implements AssetProvider {
     let rawSearchResultCount = 0;
     for (const query of queries.slice(0, 5)) {
       try {
-        const { stdout } = await this.runCommand('search', this.ytDlpBinary, [
-          `ytsearch5:${query}`,
-          '--dump-json',
-          '--skip-download',
-        ]);
+        const { stdout } = await this.runCommand(
+          'search',
+          this.ytDlpBinary,
+          this.ytDlpArgs([
+            `ytsearch5:${query}`,
+            '--flat-playlist',
+            '--dump-json',
+            '--skip-download',
+          ]),
+        );
         for (const candidate of this.parseSearchResults(stdout)) {
           rawSearchResultCount += 1;
           const relevance = evaluateAssetRelevance(request, {
@@ -1072,6 +1220,16 @@ export class YouTubeAssetProvider implements AssetProvider {
       candidateCount: pool.size,
       relevanceRejections: rejectionCodes,
     };
+  }
+
+  private selectVideoWindowStart(
+    sourceDuration: number,
+    clipDuration: number,
+  ): number {
+    if (!Number.isFinite(sourceDuration) || sourceDuration <= clipDuration + 2)
+      return 0;
+    const lastStart = Math.max(0, sourceDuration - clipDuration - 2);
+    return Math.round(Math.min(lastStart, Math.max(3, sourceDuration * 0.25)));
   }
 
   parseSearchResults(stdout: string): YouTubeCandidate[] {
@@ -1222,6 +1380,10 @@ export class YouTubeAssetProvider implements AssetProvider {
     return labels[step];
   }
 
+  private ytDlpArgs(args: string[]): string[] {
+    return ['--js-runtimes', 'node:/usr/local/bin/node', ...args];
+  }
+
   private commandDiagnostics(error: unknown): Record<string, unknown> {
     const commandError = error as {
       code?: unknown;
@@ -1239,13 +1401,20 @@ export class YouTubeAssetProvider implements AssetProvider {
       syscall: commandError.syscall,
       stdout:
         typeof commandError.stdout === 'string'
-          ? commandError.stdout.trim()
+          ? this.truncateDiagnostic(commandError.stdout.trim())
           : commandError.stdout,
       stderr:
         typeof commandError.stderr === 'string'
-          ? commandError.stderr.trim()
+          ? this.truncateDiagnostic(commandError.stderr.trim())
           : commandError.stderr,
     };
+  }
+
+  private truncateDiagnostic(value: string): string {
+    const maxLength = 2_000;
+    return value.length > maxLength
+      ? `${value.slice(0, maxLength)}…[truncated ${value.length - maxLength} chars]`
+      : value;
   }
 
   private joinSearchParts(parts: unknown[]): string {

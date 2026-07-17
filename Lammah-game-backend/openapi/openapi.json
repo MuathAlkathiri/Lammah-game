@@ -1147,6 +1147,33 @@
         ]
       }
     },
+    "/admin/ai-generator/wigolo-health": {
+      "get": {
+        "operationId": "aiWigoloHealth",
+        "summary": "Admin: safe Wigolo verification provider readiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WigoloHealthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin AI Generator"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/admin/ai-generator/debug-tools": {
       "get": {
         "operationId": "aiDebugTools",
@@ -2980,6 +3007,70 @@
           "data"
         ]
       },
+      "WigoloHealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "wigolo"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "DEGRADED",
+              "UNAVAILABLE"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "installationType": {
+            "type": "string",
+            "enum": [
+              "project-local",
+              "configured",
+              "executable-path",
+              "path"
+            ]
+          },
+          "transport": {
+            "type": "string",
+            "enum": [
+              "stdio"
+            ]
+          },
+          "requiredToolsAvailable": {
+            "type": "boolean"
+          },
+          "cacheAvailable": {
+            "type": "boolean"
+          },
+          "lastCheckedAt": {
+            "type": "string"
+          },
+          "issueCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "enabled",
+          "status",
+          "requiredToolsAvailable",
+          "cacheAvailable",
+          "lastCheckedAt",
+          "issueCodes"
+        ]
+      },
       "AiToolDiagnosticsResponseDto": {
         "type": "object",
         "properties": {
@@ -3200,6 +3291,91 @@
           "durationMs"
         ]
       },
+      "AiVerificationDiagnosticsResponseDto": {
+        "type": "object",
+        "properties": {
+          "verificationRequired": {
+            "type": "boolean"
+          },
+          "verificationProvider": {
+            "type": "string",
+            "enum": [
+              "wigolo",
+              "local-knowledge"
+            ]
+          },
+          "verificationStatus": {
+            "type": "string",
+            "enum": [
+              "VERIFIED",
+              "PARTIALLY_VERIFIED",
+              "REJECTED",
+              "UNAVAILABLE"
+            ]
+          },
+          "verificationCacheHit": {
+            "type": "boolean"
+          },
+          "canonicalEntity": {
+            "type": "string"
+          },
+          "canonicalAnswer": {
+            "type": "string"
+          },
+          "verifiedAliasesCount": {
+            "type": "number"
+          },
+          "evidenceSourceCount": {
+            "type": "number"
+          },
+          "overallConfidence": {
+            "type": "number"
+          },
+          "identityConfidence": {
+            "type": "number"
+          },
+          "answerConfidence": {
+            "type": "number"
+          },
+          "associationConfidence": {
+            "type": "number"
+          },
+          "verificationDurationMs": {
+            "type": "number"
+          },
+          "verificationIssueCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "canonicalSongTitle": {
+            "type": "string"
+          },
+          "canonicalArtist": {
+            "type": "string"
+          },
+          "verifiedFranchise": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verificationRequired",
+          "verificationProvider",
+          "verificationStatus",
+          "verificationCacheHit",
+          "canonicalEntity",
+          "canonicalAnswer",
+          "verifiedAliasesCount",
+          "evidenceSourceCount",
+          "overallConfidence",
+          "identityConfidence",
+          "answerConfidence",
+          "associationConfidence",
+          "verificationDurationMs",
+          "verificationIssueCodes"
+        ]
+      },
       "ReviewedQuestionDraftResponseDto": {
         "type": "object",
         "properties": {
@@ -3382,6 +3558,9 @@
           "aiMetadata": {
             "type": "object",
             "additionalProperties": true
+          },
+          "verificationDiagnostics": {
+            "$ref": "#/components/schemas/AiVerificationDiagnosticsResponseDto"
           }
         },
         "required": [

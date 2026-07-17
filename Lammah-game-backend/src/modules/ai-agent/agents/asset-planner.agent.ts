@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { LlmClientService } from '../infrastructure/ai/llm-client.service';
 import { AgentExecutionContext, LlmAgent } from './llm-agent.interface';
+import type { VerifiedEntity } from '../application/entity-verification.types';
 
 export type AssetEntityType =
   | 'character'
@@ -96,9 +97,13 @@ export class AssetPlannerAgent implements LlmAgent<
     input: Record<string, unknown>,
     raw: Partial<AssetPlans>,
   ): AssetPlans {
+    const verified = this.verifiedEntity(input.verifiedEntity);
     const rawPrimary = this.record(raw.primaryAssetPlan);
     const rawCover = this.record(raw.coverImagePlan);
-    const answer = this.text(input.correctAnswer) || this.text(input.answer);
+    const answer =
+      verified?.canonicalAnswer ||
+      this.text(input.correctAnswer) ||
+      this.text(input.answer);
     const question = this.text(input.question);
     const proposed =
       this.text(rawPrimary?.canonicalEntity) ||
@@ -107,16 +112,15 @@ export class AssetPlannerAgent implements LlmAgent<
       this.text(rawCover?.entity);
     const proposedFailure = this.validateEntity(proposed, question);
     const answerFailure = this.validateEntity(answer, question);
-    const canonicalEntity = !answerFailure
-      ? answer
-      : !proposedFailure
-        ? proposed
-        : '';
+    const canonicalEntity =
+      verified?.canonicalEntity ||
+      (!answerFailure ? answer : !proposedFailure ? proposed : '');
     const plannerFailure =
       proposedFailure && canonicalEntity
         ? proposedFailure
         : (answerFailure ?? proposedFailure);
     const franchise =
+      verified?.franchise ||
       this.text(rawPrimary?.franchise) ||
       this.text(rawCover?.franchise) ||
       this.text(input.franchise);
@@ -125,11 +129,9 @@ export class AssetPlannerAgent implements LlmAgent<
       this.text(rawPrimary?.entityType) || this.text(rawCover?.entityType),
     );
     const primaryRequired = this.primaryRequired(input);
-    const aliases = this.aliases(
-      canonicalEntity,
-      rawPrimary?.aliases,
-      rawCover?.aliases,
-    );
+    const aliases = verified?.aliases.length
+      ? verified.aliases
+      : this.aliases(canonicalEntity, rawPrimary?.aliases, rawCover?.aliases);
     const searchEntity = canonicalEntity
       ? [canonicalEntity, franchise].filter(Boolean).join(' ')
       : undefined;
@@ -213,6 +215,16 @@ export class AssetPlannerAgent implements LlmAgent<
         ...(plannerFailure ? { plannerFailure } : {}),
       },
     };
+  }
+
+  private verifiedEntity(value: unknown): VerifiedEntity | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const candidate = value as Partial<VerifiedEntity>;
+    return typeof candidate.canonicalEntity === 'string' &&
+      typeof candidate.canonicalAnswer === 'string' &&
+      Array.isArray(candidate.aliases)
+      ? (candidate as VerifiedEntity)
+      : undefined;
   }
 
   validateEntity(value: string, question = ''): PlannerFailure | undefined {

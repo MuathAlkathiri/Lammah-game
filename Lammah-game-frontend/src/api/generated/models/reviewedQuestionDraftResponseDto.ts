@@ -21,6 +21,7 @@ import type { ReviewedQuestionDraftResponseDtoAssetFailureDiagnostics } from "./
 import type { AiAgentTraceResponseDto } from "./aiAgentTraceResponseDto";
 import type { ReviewedQuestionDraftResponseDtoGameplayMetadata } from "./reviewedQuestionDraftResponseDtoGameplayMetadata";
 import type { ReviewedQuestionDraftResponseDtoAiMetadata } from "./reviewedQuestionDraftResponseDtoAiMetadata";
+import type { AiVerificationDiagnosticsResponseDto } from "./aiVerificationDiagnosticsResponseDto";
 
 export interface ReviewedQuestionDraftResponseDto {
   question: string;
@@ -57,4 +58,5 @@ export interface ReviewedQuestionDraftResponseDto {
   agentTrace?: AiAgentTraceResponseDto[];
   gameplayMetadata?: ReviewedQuestionDraftResponseDtoGameplayMetadata;
   aiMetadata?: ReviewedQuestionDraftResponseDtoAiMetadata;
+  verificationDiagnostics?: AiVerificationDiagnosticsResponseDto;
 }

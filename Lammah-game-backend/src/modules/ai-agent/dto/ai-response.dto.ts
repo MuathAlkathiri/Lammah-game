@@ -72,6 +72,30 @@ export class AiAgentTraceResponseDto {
   @ApiPropertyOptional() reason?: string;
 }
 
+export class AiVerificationDiagnosticsResponseDto {
+  @ApiProperty() verificationRequired!: boolean;
+  @ApiProperty({ enum: ['wigolo', 'local-knowledge'] })
+  verificationProvider!: string;
+  @ApiProperty({
+    enum: ['VERIFIED', 'PARTIALLY_VERIFIED', 'REJECTED', 'UNAVAILABLE'],
+  })
+  verificationStatus!: string;
+  @ApiProperty() verificationCacheHit!: boolean;
+  @ApiProperty() canonicalEntity!: string;
+  @ApiProperty() canonicalAnswer!: string;
+  @ApiProperty() verifiedAliasesCount!: number;
+  @ApiProperty() evidenceSourceCount!: number;
+  @ApiProperty() overallConfidence!: number;
+  @ApiProperty() identityConfidence!: number;
+  @ApiProperty() answerConfidence!: number;
+  @ApiProperty() associationConfidence!: number;
+  @ApiProperty() verificationDurationMs!: number;
+  @ApiProperty({ type: [String] }) verificationIssueCodes!: string[];
+  @ApiPropertyOptional() canonicalSongTitle?: string;
+  @ApiPropertyOptional() canonicalArtist?: string;
+  @ApiPropertyOptional() verifiedFranchise?: string;
+}
+
 export class ReviewedQuestionDraftResponseDto {
   @ApiProperty() question!: string;
   @ApiProperty() correctAnswer!: string;
@@ -119,6 +143,8 @@ export class ReviewedQuestionDraftResponseDto {
   gameplayMetadata?: Record<string, unknown>;
   @ApiPropertyOptional({ type: 'object', additionalProperties: true })
   aiMetadata?: Record<string, unknown>;
+  @ApiPropertyOptional({ type: AiVerificationDiagnosticsResponseDto })
+  verificationDiagnostics?: AiVerificationDiagnosticsResponseDto;
 }
 
 export class ReviewedQuestionsDataResponseDto {
@@ -148,6 +174,23 @@ export class AiToolDiagnosticsResponseDto {
   @ApiProperty() ytDlpAvailable!: boolean;
   @ApiProperty() ffmpegVersion!: string;
   @ApiProperty() ytDlpVersion!: string;
+}
+
+export class WigoloHealthResponseDto {
+  @ApiProperty({ enum: ['wigolo'] }) provider!: 'wigolo';
+  @ApiProperty() enabled!: boolean;
+  @ApiProperty({ enum: ['READY', 'DEGRADED', 'UNAVAILABLE'] })
+  status!: string;
+  @ApiPropertyOptional() version?: string;
+  @ApiPropertyOptional({
+    enum: ['project-local', 'configured', 'executable-path', 'path'],
+  })
+  installationType?: string;
+  @ApiPropertyOptional({ enum: ['stdio'] }) transport?: string;
+  @ApiProperty() requiredToolsAvailable!: boolean;
+  @ApiProperty() cacheAvailable!: boolean;
+  @ApiProperty() lastCheckedAt!: string;
+  @ApiProperty({ type: [String] }) issueCodes!: string[];
 }
 
 export class SaveDraftFailureDto {

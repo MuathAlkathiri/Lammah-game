@@ -110,19 +110,28 @@ export class GameplayValidatorService {
         return draft;
 
       case 'identifyCharacter':
-        if (draft.type !== 'image') {
+        if (!['image', 'video'].includes(draft.type)) {
           draft = this.autoFix(draft, {
             type: 'image',
-            reason: 'identifyCharacter requires image type',
+            reason: 'identifyCharacter requires image or video type',
           });
         }
 
         if (!draft.assetRequest) {
-          draft.issues.push('identifyCharacter requires image assetRequest');
+          draft.issues.push(
+            'identifyCharacter requires image or video assetRequest',
+          );
         } else {
           draft.assetRequest = {
             ...draft.assetRequest,
-            type: 'image',
+            type: draft.type,
+            duration:
+              draft.type === 'video'
+                ? Math.min(
+                    maxAudioDuration,
+                    Number(draft.assetRequest.duration) || maxAudioDuration,
+                  )
+                : draft.assetRequest.duration,
           };
 
           if (!draft.assetRequest.entity && !draft.assetRequest.context) {

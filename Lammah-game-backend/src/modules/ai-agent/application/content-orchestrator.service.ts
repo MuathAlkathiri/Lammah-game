@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AgentExecutionContext,
   AgentTrace,
@@ -12,6 +12,9 @@ import { AppleMusicPreviewProvider } from '../infrastructure/assets/apple-music-
 import { MusicAssetPlan } from '../contracts/music-asset-provider.interface';
 import { AssetRequest } from '../contracts/asset-provider.interface';
 import { normalizeAssetRequestIntent } from './asset-request-normalizer';
+import { EntityVerificationService } from './entity-verification.service';
+import { entityVerificationPolicy } from './entity-verification.policy';
+import type { EntityVerificationRequest } from './entity-verification.types';
 
 @Injectable()
 export class ContentOrchestratorService {
@@ -22,6 +25,7 @@ export class ContentOrchestratorService {
     private readonly assetReviewer: AssetReviewerAgent,
     private readonly questionReviewer: QuestionReviewerAgent,
     private readonly music: AppleMusicPreviewProvider,
+    @Optional() private readonly verification?: EntityVerificationService,
   ) {}
 
   async execute(prompt: string, context: AgentExecutionContext) {
@@ -33,8 +37,42 @@ export class ContentOrchestratorService {
     const questions = await Promise.all(
       (generated.value.questions ?? []).map(async (draft) => {
         const trace: AgentTrace[] = [generated.trace];
+        const verificationRequest = this.verificationRequest(draft, context);
+        const verified = this.verification
+          ? await this.verification.verify(verificationRequest)
+          : undefined;
+        const verificationDiagnostics =
+          verified && this.verification
+            ? this.verification.diagnostics(
+                verified,
+                !verificationRequest.locallyGrounded,
+              )
+            : undefined;
+        if (
+          verified &&
+          !entityVerificationPolicy.maySearchProviders(
+            verified,
+            verificationRequest,
+          )
+        ) {
+          return {
+            ...draft,
+            primaryAssetStatus: 'FAILED',
+            assetStatus: 'FAILED',
+            coverImageStatus: 'FAILED',
+            assetFailureReason:
+              'Entity verification did not permit provider search',
+            assetFailureStep: 'entity-verification',
+            verificationDiagnostics,
+            issues: [...this.array(draft.issues), ...verified.issues],
+            agentTrace: trace,
+          };
+        }
         const planned = await this.timed(this.planner.name, () =>
-          this.planner.execute(draft, context),
+          this.planner.execute(
+            { ...draft, ...(verified ? { verifiedEntity: verified } : {}) },
+            context,
+          ),
         );
         trace.push(planned.trace);
         if (!planned.value)
@@ -107,6 +145,7 @@ export class ContentOrchestratorService {
               ? coverResult.assetFailureReason
               : undefined,
           assetPlannerDiagnostics: planned.value.plannerDiagnostics,
+          verificationDiagnostics,
           issues: [
             ...this.array(draft.issues),
             ...(assetReview.value?.issues ?? []),
@@ -129,6 +168,53 @@ export class ContentOrchestratorService {
       }),
     );
     return { questions };
+  }
+
+  private verificationRequest(
+    draft: Record<string, unknown>,
+    context: AgentExecutionContext,
+  ): EntityVerificationRequest {
+    const gameMode = this.text(draft.gameMode);
+    const entity =
+      this.text(draft.entity) ||
+      this.text(draft.canonicalEntity) ||
+      this.text(draft.correctAnswer) ||
+      this.text(draft.answer);
+    const artist =
+      this.text(draft.artist) ||
+      (draft.musicMetadata && typeof draft.musicMetadata === 'object'
+        ? this.text((draft.musicMetadata as Record<string, unknown>).artist)
+        : '');
+    const song = [
+      'identifySong',
+      'identifySinger',
+      'identifyMusicIntro',
+    ].includes(gameMode);
+    return {
+      proposedEntity: entity,
+      proposedAnswer:
+        this.text(draft.correctAnswer) || this.text(draft.answer) || entity,
+      entityType: song
+        ? 'song'
+        : gameMode.includes('Character') || gameMode === 'identifyVoice'
+          ? 'anime-character'
+          : 'unknown',
+      language: context.language === 'en' ? 'en' : 'ar',
+      gameMode,
+      ...(artist ? { artist } : {}),
+      ...(this.text(draft.franchise)
+        ? { franchise: this.text(draft.franchise) }
+        : {}),
+      intendedAsset: song
+        ? 'song'
+        : gameMode === 'identifyVoice'
+          ? 'voice'
+          : ['identifyImage', 'identifyCharacter'].includes(gameMode)
+            ? 'image'
+            : 'cover-image',
+      context: this.text(draft.context) || undefined,
+      locallyGrounded: Boolean(draft.locallyGrounded),
+    };
   }
 
   private async resolvePrimary(
@@ -174,6 +260,9 @@ export class ContentOrchestratorService {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === 'string')
       : [];
+  }
+  private text(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
   }
   private async timed<T>(
     agent: string,

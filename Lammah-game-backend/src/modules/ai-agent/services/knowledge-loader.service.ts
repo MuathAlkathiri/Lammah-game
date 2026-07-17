@@ -37,6 +37,10 @@ export class KnowledgeLoaderService {
   }
 
   inferKnowledgeFile(catalogName: string, categoryName: string): string {
+    if (this.isSongsCategory(categoryName)) return 'music/gulf-music.md';
+    if (this.isFromCategory(categoryName)) return 'series/from.md';
+    if (this.isVideoGamesCategory(catalogName, categoryName))
+      return 'games/video-games.md';
     return `${this.slugify(catalogName)}/${this.slugify(categoryName)}.md`;
   }
 
@@ -87,5 +91,41 @@ export class KnowledgeLoaderService {
         .replace(/[^\p{L}\p{N}]+/gu, '-')
         .replace(/^-+|-+$/g, '') || 'default'
     );
+  }
+
+  private isSongsCategory(value: string): boolean {
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ـ\u064b-\u065f\u0670]/g, '')
+      .replace(/\s+/g, ' ');
+    return normalized === 'اغاني' || normalized === 'اغاني الخليج';
+  }
+
+  private isFromCategory(value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'from' || normalized === 'فروم';
+  }
+
+  private isVideoGamesCategory(catalogName: string, categoryName: string) {
+    const normalized = `${catalogName} ${categoryName}`
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ـ\u064b-\u065f\u0670]/g, '')
+      .replace(/\s+/g, ' ');
+
+    return [
+      'العاب',
+      'الالعاب',
+      'العاب الفيديو',
+      'فيديو قيمز',
+      'قيمز',
+      'video games',
+      'videogames',
+      'games',
+      'gaming',
+    ].some((keyword) => normalized.includes(keyword));
   }
 }

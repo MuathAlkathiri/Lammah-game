@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY Lammah-game-backend/package.json ./Lammah-game-backend/package.json
 COPY Lammah-game-frontend/package.json ./Lammah-game-frontend/package.json
 RUN npm ci
 
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ COPY --from=deps /app/Lammah-game-frontend/node_modules ./Lammah-game-frontend/n
 COPY . .
 RUN npm run build --workspace Lammah-game-backend
 
-FROM node:20-alpine AS prod-deps
+FROM node:20-bookworm-slim AS prod-deps
 
 WORKDIR /app
 
@@ -30,11 +30,14 @@ COPY Lammah-game-frontend/package.json ./Lammah-game-frontend/package.json
 RUN npm ci --omit=dev
 RUN npm prune --omit=dev
 
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache ffmpeg yt-dlp
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 python3-pip \
+  && python3 -m pip install --no-cache-dir --break-system-packages --upgrade yt-dlp \
+  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NODE_PATH=/app/Lammah-game-backend/node_modules:/app/node_modules
@@ -46,7 +49,7 @@ COPY --from=prod-deps --chown=node:node /app/Lammah-game-backend/package.json ./
 COPY --from=prod-deps --chown=node:node /app/Lammah-game-backend/node_modules ./Lammah-game-backend/node_modules
 COPY --from=build --chown=node:node /app/Lammah-game-backend/dist ./Lammah-game-backend/dist
 
-RUN mkdir -p uploads && chown -R node:node uploads
+RUN mkdir -p uploads .cache && chown -R node:node uploads .cache
 
 USER node
 

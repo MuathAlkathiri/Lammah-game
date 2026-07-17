@@ -26,8 +26,10 @@ import {
   AiToolDiagnosticsResponseDto,
   GenerateReviewedQuestionsResponseDto,
   SaveReviewedDraftsResponseDto,
+  WigoloHealthResponseDto,
 } from './dto/ai-response.dto';
 import { QuestionResponseMapper } from '../questions/mappers/question-response.mapper';
+import { WigoloClient } from './infrastructure/wigolo/wigolo-client';
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +39,29 @@ const execFileAsync = promisify(execFile);
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 export class AdminAiGeneratorController {
-  constructor(private readonly aiAgentService: AiAgentService) {}
+  private wigoloHealthCache?: {
+    expiresAt: number;
+    value: Awaited<ReturnType<WigoloClient['readiness']>>;
+  };
+
+  constructor(
+    private readonly aiAgentService: AiAgentService,
+    private readonly wigoloClient: WigoloClient,
+  ) {}
+
+  @Get('wigolo-health')
+  @ApiOperation({
+    operationId: 'aiWigoloHealth',
+    summary: 'Admin: safe Wigolo verification provider readiness',
+  })
+  @ApiResponse({ status: 200, type: WigoloHealthResponseDto })
+  async wigoloHealth() {
+    const cached = this.wigoloHealthCache;
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const value = await this.wigoloClient.readiness();
+    this.wigoloHealthCache = { value, expiresAt: Date.now() + 30_000 };
+    return value;
+  }
 
   @Get('debug-tools')
   @ApiOperation({

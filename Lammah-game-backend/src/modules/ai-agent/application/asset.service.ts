@@ -129,7 +129,7 @@ export class AssetService {
 
     if (provider) return normalizedRequest;
 
-    if (type === 'audio') {
+    if (type === 'audio' || type === 'video') {
       return {
         ...normalizedRequest,
         provider: 'youtube',

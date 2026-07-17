@@ -27,11 +27,140 @@ import type {
   GenerateReviewedQuestionsResponseDto,
   SaveReviewedDraftsDto,
   SaveReviewedDraftsResponseDto,
+  WigoloHealthResponseDto,
 } from ".././models";
 
 import { orvalMutator } from "../../orval-mutator";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Admin: safe Wigolo verification provider readiness
+ */
+export const aiWigoloHealth = (
+  options?: SecondParameter<typeof orvalMutator>,
+  signal?: AbortSignal,
+) => {
+  return orvalMutator<WigoloHealthResponseDto>(
+    { url: `/admin/ai-generator/wigolo-health`, method: "GET", signal },
+    options,
+  );
+};
+
+export const getAiWigoloHealthQueryKey = () => {
+  return [`/admin/ai-generator/wigolo-health`] as const;
+};
+
+export const getAiWigoloHealthQueryOptions = <
+  TData = Awaited<ReturnType<typeof aiWigoloHealth>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof aiWigoloHealth>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof orvalMutator>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAiWigoloHealthQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof aiWigoloHealth>>> = ({
+    signal,
+  }) => aiWigoloHealth(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof aiWigoloHealth>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData> };
+};
+
+export type AiWigoloHealthQueryResult = NonNullable<
+  Awaited<ReturnType<typeof aiWigoloHealth>>
+>;
+export type AiWigoloHealthQueryError = unknown;
+
+export function useAiWigoloHealth<
+  TData = Awaited<ReturnType<typeof aiWigoloHealth>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof aiWigoloHealth>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof aiWigoloHealth>>,
+          TError,
+          Awaited<ReturnType<typeof aiWigoloHealth>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof orvalMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData>;
+};
+export function useAiWigoloHealth<
+  TData = Awaited<ReturnType<typeof aiWigoloHealth>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof aiWigoloHealth>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof aiWigoloHealth>>,
+          TError,
+          Awaited<ReturnType<typeof aiWigoloHealth>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof orvalMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+export function useAiWigoloHealth<
+  TData = Awaited<ReturnType<typeof aiWigoloHealth>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof aiWigoloHealth>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof orvalMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> };
+/**
+ * @summary Admin: safe Wigolo verification provider readiness
+ */
+
+export function useAiWigoloHealth<
+  TData = Awaited<ReturnType<typeof aiWigoloHealth>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof aiWigoloHealth>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof orvalMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData> } {
+  const queryOptions = getAiWigoloHealthQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 /**
  * @deprecated

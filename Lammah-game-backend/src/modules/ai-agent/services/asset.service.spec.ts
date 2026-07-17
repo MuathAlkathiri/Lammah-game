@@ -12,7 +12,7 @@ import { JikanAnimeImageProvider } from '../infrastructure/assets/jikan-anime-im
 class StubProvider implements AssetProvider {
   lastRequest?: AssetRequest;
   constructor(
-    private readonly type: 'audio' | 'image',
+    private readonly type: 'audio' | 'image' | 'video',
     private readonly providerName: string,
   ) {}
 
@@ -134,6 +134,25 @@ describe('AssetService provider selection', () => {
     const result = await createService().process({
       type: 'audio',
       entity: 'Kankuro',
+    });
+    expect(result.assetStatus).toBe('READY');
+    if (result.assetStatus === 'READY')
+      expect(result.asset.provider).toBe('youtube');
+  });
+
+  it('keeps YouTube as the default video provider', async () => {
+    const service = new AssetService(
+      new StubProvider('video', 'youtube') as unknown as YouTubeAssetProvider,
+      new StubProvider('image', 'jikan') as unknown as JikanAnimeImageProvider,
+      new StubProvider(
+        'image',
+        'wikimedia',
+      ) as unknown as WikimediaImageProvider,
+    );
+    const result = await service.process({
+      type: 'video',
+      entity: 'Arya Stark',
+      franchise: 'Game of Thrones',
     });
     expect(result.assetStatus).toBe('READY');
     if (result.assetStatus === 'READY')

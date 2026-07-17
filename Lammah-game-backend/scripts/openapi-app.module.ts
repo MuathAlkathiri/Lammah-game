@@ -30,6 +30,7 @@ import { SubscriptionsController } from '../src/modules/subscriptions/subscripti
 import { SubscriptionsService } from '../src/modules/subscriptions/subscriptions.service';
 import { UsersController } from '../src/modules/users/users.controller';
 import { UsersService } from '../src/modules/users/users.service';
+import { WigoloClient } from '../src/modules/ai-agent/infrastructure/wigolo/wigolo-client';
 
 const documentationOnlyProvider = (provide: InjectionToken) => ({
   provide,
@@ -71,6 +72,7 @@ const documentationOnlyProvider = (provide: InjectionToken) => ({
     GameScoringService,
     MusicService,
     AiAgentService,
+    WigoloClient,
     SubscriptionsService,
   ].map(documentationOnlyProvider),
 })

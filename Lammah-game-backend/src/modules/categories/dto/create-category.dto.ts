@@ -86,7 +86,8 @@ export class CategoryGameplayConfigDto {
     example: {
       text: 20,
       image: 35,
-      audio: 25,
+      audio: 20,
+      video: 5,
       quote: 10,
       emoji: 5,
       timeline: 5,
@@ -95,20 +96,23 @@ export class CategoryGameplayConfigDto {
   @IsOptional()
   @IsObject()
   questionTypes?: Partial<
-    Record<'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline', number>
+    Record<
+      'text' | 'image' | 'audio' | 'video' | 'quote' | 'emoji' | 'timeline',
+      number
+    >
   >;
 
   @ApiPropertyOptional({
-    example: ['text', 'image', 'audio', 'quote', 'emoji', 'timeline'],
+    example: ['text', 'image', 'audio', 'video', 'quote', 'emoji', 'timeline'],
     type: [String],
   })
   @IsOptional()
   @IsArray()
-  @IsIn(['text', 'image', 'audio', 'quote', 'emoji', 'timeline'], {
+  @IsIn(['text', 'image', 'audio', 'video', 'quote', 'emoji', 'timeline'], {
     each: true,
   })
   supportedAssetTypes?: Array<
-    'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline'
+    'text' | 'image' | 'audio' | 'video' | 'quote' | 'emoji' | 'timeline'
   >;
 
   @ApiPropertyOptional({

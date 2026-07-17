@@ -18,6 +18,11 @@ import { CategoriesModule } from '../categories/categories.module';
 import { MusicModule } from '../music/music.module';
 import { QuestionsModule } from '../questions/questions.module';
 import { AssetResolutionModule } from './asset-resolution.module';
+import { ENTITY_RESEARCH_PROVIDER } from './contracts/entity-research-provider.interface';
+import { EntityVerificationService } from './application/entity-verification.service';
+import { WigoloClient } from './infrastructure/wigolo/wigolo-client';
+import { WigoloResearchProvider } from './infrastructure/wigolo/wigolo-research.provider';
+import { WigoloCacheRepository } from './infrastructure/wigolo/wigolo-cache.repository';
 
 @Module({
   imports: [
@@ -40,6 +45,11 @@ import { AssetResolutionModule } from './asset-resolution.module';
     AssetReviewerAgent,
     QuestionReviewerAgent,
     AppleMusicPreviewProvider,
+    EntityVerificationService,
+    WigoloClient,
+    WigoloResearchProvider,
+    WigoloCacheRepository,
+    { provide: ENTITY_RESEARCH_PROVIDER, useExisting: WigoloResearchProvider },
   ],
   controllers: [AiAgentController, AdminAiGeneratorController],
   exports: [AiAgentService],

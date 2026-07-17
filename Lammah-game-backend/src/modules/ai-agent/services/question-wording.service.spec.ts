@@ -53,6 +53,28 @@ describe('QuestionWordingService', () => {
     );
   });
 
+  it('detects robotic translated riddle wording', () => {
+    expect(
+      service.validate(
+        'من هو الإستراتيجي الذي يمتلك عيونًا استثنائية ويتمتع بذاكرة قوية لقراءة الأحداث الماضية؟',
+        'الغراب ذو العيون الثلاثة',
+      ).issues,
+    ).toContain('QUESTION_ROBOTIC_RIDDLE_STYLE');
+    expect(
+      service.validate(
+        'من الشخصية التي ترتبط دائمًا بالأسرار ويظهر خلف الكواليس؟',
+        'فاريس',
+      ).issues,
+    ).toContain('QUESTION_ROBOTIC_RIDDLE_STYLE');
+  });
+
+  it('accepts more human host-style wording', () => {
+    expect(
+      service.validate('مين معروف بدهائه وشغله من وراء الستار؟', 'فاريس')
+        .issues,
+    ).toEqual([]);
+  });
+
   it('only removes obvious framing and parentheses in deterministic fallback', () => {
     expect(
       service.safelyShorten(

@@ -62,6 +62,26 @@ export interface ReviewedQuestionDraft {
     country?: string;
     language: "ar";
   };
+  verificationDiagnostics?: {
+    verificationRequired: boolean;
+    verificationProvider: "wigolo" | "local-knowledge";
+    verificationStatus:
+      "VERIFIED" | "PARTIALLY_VERIFIED" | "REJECTED" | "UNAVAILABLE";
+    verificationCacheHit: boolean;
+    canonicalEntity: string;
+    canonicalAnswer: string;
+    verifiedAliasesCount: number;
+    evidenceSourceCount: number;
+    overallConfidence: number;
+    identityConfidence: number;
+    answerConfidence: number;
+    associationConfidence: number;
+    verificationDurationMs: number;
+    verificationIssueCodes: string[];
+    canonicalSongTitle?: string;
+    canonicalArtist?: string;
+    verifiedFranchise?: string;
+  };
 }
 
 export interface GenerateReviewedQuestionsResult {

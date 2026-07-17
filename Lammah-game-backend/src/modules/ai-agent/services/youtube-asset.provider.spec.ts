@@ -64,8 +64,19 @@ describe('YouTubeAssetProvider media intent', () => {
       }),
     ).toEqual({
       supported: false,
-      reason: 'Expected audio request; received image',
+      reason: 'Expected audio or video request; received image',
     });
+  });
+
+  it('supports video requests with searchable entity metadata', () => {
+    expect(
+      provider.supports({
+        type: 'video',
+        provider: 'youtube',
+        entity: 'Arya Stark',
+        franchise: 'Game of Thrones',
+      }),
+    ).toBe(true);
   });
 
   it('rejects missing media intent with a useful reason', () => {

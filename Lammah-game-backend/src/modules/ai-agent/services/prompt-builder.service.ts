@@ -6,6 +6,7 @@ import {
 } from '../../categories/schemas/category.schema';
 import { GameMode } from '../contracts/asset-provider.interface';
 import { gulfMusicQuestionPolicy } from '../application/gulf-music-question.policy';
+import type { CategoryGenerationProfile } from '../application/category-generation-profile.registry';
 
 export const DEFAULT_GAMEPLAY_CONFIG: Required<
   Pick<
@@ -27,7 +28,15 @@ export const DEFAULT_GAMEPLAY_CONFIG: Required<
     timeline: 5,
     emojiPuzzle: 5,
   },
-  supportedAssetTypes: ['text', 'image', 'audio', 'quote', 'emoji', 'timeline'],
+  supportedAssetTypes: [
+    'text',
+    'image',
+    'audio',
+    'video',
+    'quote',
+    'emoji',
+    'timeline',
+  ],
   preferredDifficultyMix: {
     easy: 30,
     medium: 50,
@@ -49,6 +58,7 @@ type BuildReviewedPromptInput = {
   knowledge: ParsedKnowledge;
   aiConfig?: CategoryAiConfig;
   gameplayConfig?: CategoryGameplayConfig;
+  categoryProfile?: CategoryGenerationProfile;
 };
 
 @Injectable()
@@ -67,6 +77,7 @@ Use it to decide what to ask, what to avoid, and what quality means for this cat
 
 Global Rules:
 - Questions must be fun, specific, and suitable for a fast social party quiz.
+- Write like a human quiz host talking to friends, not like an AI summary or translated wiki page.
 - The question field is one short playable sentence; start with the actual question immediately.
 - Prefer 8-18 Arabic words, stay under 22 when practical, and never exceed 28 except for an essential proper name or short quote.
 - It must be easy to understand and read aloud in under 6 seconds.
@@ -76,8 +87,14 @@ Global Rules:
 - Avoid introductions, nested clauses, repeated clues, unnecessary translations, excessive punctuation, and parentheses.
 - Never use academic filler such as: بناءً على ما سبق، في ضوء المعلومات، أي من الآتي، يُعرّف بأنه، يتمثل في، والمقصود هنا، مع العلم أن.
 - Never mention the expected answer format or leak the answer.
+- In Arabic generation, player-facing answers must be Arabic-first. Use Arabic only when natural, or Arabic followed by the canonical English name in parentheses for proper nouns. Avoid English-only correctAnswer/wrongAnswers unless the answer has no recognizable Arabic form.
+- Keep canonical English names/titles inside assetRequest metadata when needed for search and verification; do not make the visible answer English-only just to help providers.
 - Keep every difficulty concise: hard means more specific knowledge, not longer wording.
 - Avoid generic school-style questions.
+- Avoid robotic riddle phrasing such as "من هي الشخصية التي..." when a shorter host question works.
+- Avoid long relative clauses: "الذي يمتلك..." / "التي ترتبط..." / "ويتمتع..." / "خلف الكواليس..." stacked together.
+- Prefer lively direct Arabic: "مين..."، "وش..."، "أي..."، "تذكرون..."، "في FROM، مين..." when natural.
+- Do not over-describe the answer. Give one clue, not a biography.
 - Avoid very obvious questions.
 - Avoid repeated topics, repeated names, repeated events, and repeated wording.
 - Each question must have one clear correct answer.
@@ -86,6 +103,14 @@ Global Rules:
 - Do not use trick questions with disputed answers.
 - Return JSON only.
 - Do not include markdown.
+
+Human Style Examples:
+- Bad: "من هو الإستراتيجي الذي يمتلك عيونًا استثنائية ويتمتع بذاكرة قوية لقراءة الأحداث الماضية؟"
+- Good: "مين يشوف الماضي والحاضر كأنه فاتح الأرشيف؟"
+- Bad: "من الشخصية التي ترتبط دائمًا بالأسرار ويظهر خلف الكواليس؟"
+- Good: "مين دايم يحرك الخيوط من وراء الستار؟"
+- Bad: "ما العنصر الذي يمثل وسيلة الحماية الأساسية ضد الكائنات الليلية؟"
+- Good: "وش الشيء اللي يحميهم من وحوش الليل؟"
 
 Request:
 - Catalog: "${input.catalogName}"
@@ -97,6 +122,7 @@ Request:
 - Used default knowledge: ${input.usedDefaultKnowledge}
 
 ${this.buildDifficultyGuidance(input.difficulty)}
+${this.buildCategoryProfileBlock(input.categoryProfile)}
 ${gulfMusic ? this.buildGulfMusicRules(input.difficulty, input.count) : ''}
 
 ${this.buildAiConfigBlock(input.aiConfig)}
@@ -110,8 +136,8 @@ Required JSON schema:
   "questions": [
     {
       "question": "سؤال عربي طبيعي ومحدد",
-      "correctAnswer": "الإجابة الصحيحة",
-      "wrongAnswers": ["إجابة خاطئة 1", "إجابة خاطئة 2", "إجابة خاطئة 3"],
+      "correctAnswer": "الإجابة الصحيحة بالعربية أو بالعربية (English)",
+      "wrongAnswers": ["إجابة خاطئة بالعربية", "إجابة خاطئة بالعربية", "إجابة خاطئة بالعربية"],
       "difficulty": "${input.difficulty}",
       "gameMode": "trivia",
       "type": "text",
@@ -140,8 +166,9 @@ Return only the JSON object.`;
 - Every question field must be exactly: "ما اسم هذه الأغنية؟"
 - correctAnswer must be the canonical song title; never ask for or answer with the artist.
 - gameMode="identifySong", type="audio", assetStatus="PENDING".
-- primaryAssetRequest and assetRequest must both contain: type="audio", assetType="audio", mediaIntent="music", sourceType="song", entityType="song", entity=<canonical title>, title=<canonical title>, artist=<canonical artist>, language="ar", region="gulf".
+- primaryAssetRequest and assetRequest must both contain: type="audio", assetType="audio", mediaIntent="music", sourceType="song", entityType="song", entity=<canonical title>, title=<canonical title>, artist=<canonical artist>, language="ar", region="gulf", duration=15.
 - Artist is mandatory search metadata. Never create a song or artist outside the verified table.
+- The audio asset must be a 15 second snippet from the same generated song; the player guesses the song title from the snippet.
 - Wrong answers must be three other real song titles from the verified table, never artist names.
 - Do not generate trivia, voice, singer, image-identification, lyric-completion, album, year, or theme questions.
 - Cover is decorative and must not contain the song title or album artwork.`;
@@ -165,6 +192,28 @@ Return only the JSON object.`;
 - Make distractors highly plausible while preserving one clearly defensible answer.`,
     } as const;
     return guidance[difficulty];
+  }
+
+  private buildCategoryProfileBlock(profile?: CategoryGenerationProfile) {
+    if (!profile) return '';
+
+    return `Category Generation Profile:
+- profileId: ${profile.id}
+- version: ${profile.version}
+- objective: ${profile.objective}
+- allowed entity types: ${profile.allowedEntityTypes.join(', ')}
+- allowed patterns: ${profile.allowedPatternIds.join(', ')}
+- allowed game modes: ${profile.allowedGameModes.join(', ')}
+- supported asset types: ${profile.supportedAssetTypes.join(', ')}
+- forbidden answer phrases: ${(profile.forbiddenAnswerPhrases ?? []).join(', ')}
+- forbidden question phrases: ${(profile.forbiddenQuestionPhrases ?? []).join(', ')}
+- knowledge policy: ${profile.knowledgePolicy}
+- verification policy: ${profile.verificationPolicy}
+- locale answer style: ${profile.localePolicy.answerStyle}
+${profile.promptFragments?.guidance ? `- guidance: ${profile.promptFragments.guidance}` : ''}
+${profile.promptFragments?.validExamples?.length ? `Valid profile examples:\n${profile.promptFragments.validExamples.map((example) => `- ${example}`).join('\n')}` : ''}
+${profile.promptFragments?.invalidExamples?.length ? `Invalid profile examples:\n${profile.promptFragments.invalidExamples.map((example) => `- ${example}`).join('\n')}` : ''}
+For entity-backed questions, include concrete assetRequest metadata with canonicalEntity/entity, entityType, related work/franchise/gameTitle/animeTitle when applicable, and verificationQuery.`;
   }
 
   normalizeGameplayConfig(
@@ -236,17 +285,18 @@ Return only the JSON object.`;
 
 Gameplay Mode Rules:
 - gameMode describes how the player interacts with the question.
-- type describes the primary asset needed: text, image, audio, quote, emoji, or timeline.
+- type describes the primary asset needed: text, image, audio, video, quote, emoji, or timeline.
 - For trivia, type is usually "text" and assetRequest=null.
-- For identifyVoice, type must be "audio".
-- For identifyCharacter or identifyImage, type should be "image" when image is supported.
+- For identifyVoice, type must be "audio"; use it only when the category has a reliable voice/speech source. Do not invent voice clips for movies/series.
+- For movies/series/anime scene or action clues, prefer type="video" with a short clip when video is supported.
+- For identifyCharacter or identifyImage, type should be "image" or "video" when supported.
 - For completeQuote, type should be "quote".
 - For emojiPuzzle, type should be "emoji".
 - For timeline, type should be "timeline".
 - Trivia: ask one direct question with no background paragraph.
 - identifyCharacter: use "من هذه الشخصية؟" when the image supplies the clue, or one short identifying clue otherwise.
 - identifyImage: prefer "ما اسم هذا المكان؟" or "من هذه الشخصية؟" and do not narrate the image.
-- identifyVoice: prefer "لمن هذا الصوت؟" or "من صاحب هذا المقطع؟".
+- identifyVoice: prefer "لمن هذا الصوت؟" or "من صاحب هذا المقطع؟" only for real voice/audio clues.
 - completeQuote: prefer "من قال هذه العبارة؟".
 - Music identification: prefer "ما اسم هذه الأغنية؟" or "من صاحب هذه الأغنية؟".
 - timeline: keep the ordering question short, such as "أي حدث وقع أولًا؟".
@@ -266,13 +316,15 @@ Asset Rules:
 - The AI must not generate final YouTube search queries or human-style search phrases.
 - The provider owns search strategy. The AI owns semantic metadata only.
 - Do not include assetRequest.query unless no metadata is possible.
-- For audio, assetRequest must include metadata such as entity, franchise, language, originalName/localizedName when known, context, and duration.
+- For audio/video, assetRequest must include metadata such as entity, franchise, language, originalName/localizedName when known, context/searchContext, and duration.
 - Example audio assetRequest: {"type":"audio","assetType":"audio","entity":"Kankuro","franchise":"Naruto","language":"Japanese","originalName":"カンクロウ","context":"voice line or scene","duration":${normalizedConfig.maxAudioDuration}}.
+- Example video assetRequest: {"type":"video","assetType":"video","entity":"Arya Stark","franchise":"Game of Thrones","entityType":"character","categoryType":"series","searchContext":"training sword scene","duration":${normalizedConfig.maxAudioDuration}}.
 - For anime, include Japanese/original-language names when possible.
 - For movies, include the English title when possible.
 - For Arabic series, include Arabic names/titles.
 - Do not choose an asset provider. Provider selection belongs to AssetService.
 - If type is "audio", assetRequest.entity or assetRequest.originalName is required, and assetRequest.duration must not exceed ${normalizedConfig.maxAudioDuration}.
+- If type is "video", assetRequest.entity plus franchise/searchContext are required, and assetRequest.duration must not exceed ${normalizedConfig.maxAudioDuration}.
 - If type is "image", assetRequest.entity/context should describe the needed image.
 - If type is "quote", include assetRequest.speaker when known plus entity/context.
 - If type is "emoji" or "timeline", put the needed structured clue details in assetRequest.

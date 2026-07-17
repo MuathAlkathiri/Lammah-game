@@ -25,10 +25,16 @@ export class GulfMusicQuestionPolicy {
     categoryName?: string;
     knowledgeFile?: string;
   }): boolean {
-    return /gulf.?music|khaleeji|خليج|اغاني الخليج|أغاني الخليج/i.test(
-      [input.catalogName, input.categoryName, input.knowledgeFile]
-        .filter(Boolean)
-        .join(' '),
+    const category = this.normalizeArabic(input.categoryName ?? '');
+    const knowledgeFile = input.knowledgeFile ?? '';
+    const haystack = [input.catalogName, input.categoryName, knowledgeFile]
+      .filter(Boolean)
+      .join(' ');
+    return (
+      category === 'اغاني' ||
+      /gulf.?music|khaleeji|خليج|اغاني الخليج|أغاني الخليج|music\/gulf-music\.md/i.test(
+        haystack,
+      )
     );
   }
 

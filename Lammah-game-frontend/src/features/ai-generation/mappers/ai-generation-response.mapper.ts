@@ -173,6 +173,7 @@ export function toReviewedDraft(
     aiMetadata: dto.aiMetadata
       ? safeDiagnosticRecord(dto.aiMetadata)
       : undefined,
+    verificationDiagnostics: dto.verificationDiagnostics,
   };
 }
 

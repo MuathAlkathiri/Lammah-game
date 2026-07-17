@@ -35,10 +35,13 @@ export class CategoryGameplayConfig {
     >
   >;
   questionTypes?: Partial<
-    Record<'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline', number>
+    Record<
+      'text' | 'image' | 'audio' | 'video' | 'quote' | 'emoji' | 'timeline',
+      number
+    >
   >;
   supportedAssetTypes?: Array<
-    'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline'
+    'text' | 'image' | 'audio' | 'video' | 'quote' | 'emoji' | 'timeline'
   >;
   preferredDifficultyMix?: Partial<Record<'easy' | 'medium' | 'hard', number>>;
   maxAudioDuration?: number;

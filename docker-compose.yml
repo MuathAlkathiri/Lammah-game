@@ -20,6 +20,8 @@ services:
       JIKAN_REQUEST_TIMEOUT_MS: ${JIKAN_REQUEST_TIMEOUT_MS:-10000}
       JIKAN_CACHE_TTL_MS: ${JIKAN_CACHE_TTL_MS:-86400000}
       JIKAN_NEGATIVE_CACHE_TTL_MS: ${JIKAN_NEGATIVE_CACHE_TTL_MS:-600000}
+      WIGOLO_EXECUTABLE_PATH: /app/node_modules/.bin/wigolo
+      WIGOLO_CACHE_FILE: /app/.cache/entity-verification.json
     ports:
       - "3000:3000"
     depends_on:

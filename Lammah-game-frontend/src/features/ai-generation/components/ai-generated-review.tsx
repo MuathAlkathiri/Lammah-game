@@ -212,6 +212,14 @@ export function AiGeneratedReview() {
             const wordingRepaired = (question.issues ?? []).includes(
               "QUESTION_WORDING_REPAIRED",
             );
+            const verification =
+              question.aiMetadata &&
+              typeof question.aiMetadata.verificationDiagnostics === "object"
+                ? (question.aiMetadata.verificationDiagnostics as Record<
+                    string,
+                    unknown
+                  >)
+                : undefined;
             return (
               <Card key={id} className="overflow-hidden">
                 {cover ? (
@@ -270,6 +278,50 @@ export function AiGeneratedReview() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {verification && (
+                    <details className="rounded-lg border p-3 text-sm">
+                      <summary className="cursor-pointer font-semibold">
+                        تحقق Wigolo:{" "}
+                        {String(verification.verificationStatus ?? "-")}
+                      </summary>
+                      <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-2">
+                        <p>
+                          الكيان: {String(verification.canonicalEntity ?? "-")}
+                        </p>
+                        <p>
+                          الإجابة: {String(verification.canonicalAnswer ?? "-")}
+                        </p>
+                        <p>
+                          الثقة:{" "}
+                          {Math.round(
+                            Number(verification.overallConfidence ?? 0) * 100,
+                          )}
+                          %
+                        </p>
+                        <p>
+                          المصادر:{" "}
+                          {String(verification.evidenceSourceCount ?? 0)}
+                        </p>
+                        <p>
+                          الذاكرة:{" "}
+                          {verification.verificationCacheHit
+                            ? "نتيجة محفوظة"
+                            : "بحث جديد"}
+                        </p>
+                        {verification.canonicalArtist ? (
+                          <p>الفنان: {String(verification.canonicalArtist)}</p>
+                        ) : null}
+                        {verification.canonicalSongTitle ? (
+                          <p>
+                            الأغنية: {String(verification.canonicalSongTitle)}
+                          </p>
+                        ) : null}
+                        {verification.verifiedFranchise ? (
+                          <p>العمل: {String(verification.verifiedFranchise)}</p>
+                        ) : null}
+                      </div>
+                    </details>
+                  )}
                   {wordingIssues.length > 0 && (
                     <p className="text-sm text-destructive">
                       {wordingIssues

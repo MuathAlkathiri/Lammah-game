@@ -241,6 +241,43 @@ export function AIGenerator() {
     );
   };
 
+  const renderVerification = (question: ReviewedQuestionDraft) => {
+    const verification =
+      question.verificationDiagnostics ??
+      (question.aiMetadata?.verificationDiagnostics as
+        Record<string, unknown> | undefined);
+    if (!verification) return null;
+    return (
+      <details className="rounded-2xl border p-3 text-sm">
+        <summary className="cursor-pointer font-semibold">
+          تحقق Wigolo: {String(verification.verificationStatus ?? "-")}
+        </summary>
+        <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-2">
+          <p>الكيان: {String(verification.canonicalEntity ?? "-")}</p>
+          <p>الإجابة: {String(verification.canonicalAnswer ?? "-")}</p>
+          <p>
+            الثقة:{" "}
+            {Math.round(Number(verification.overallConfidence ?? 0) * 100)}%
+          </p>
+          <p>المصادر: {String(verification.evidenceSourceCount ?? 0)}</p>
+          <p>
+            الذاكرة:{" "}
+            {verification.verificationCacheHit ? "نتيجة محفوظة" : "بحث جديد"}
+          </p>
+          {verification.canonicalArtist ? (
+            <p>الفنان: {String(verification.canonicalArtist)}</p>
+          ) : null}
+          {verification.canonicalSongTitle ? (
+            <p>الأغنية: {String(verification.canonicalSongTitle)}</p>
+          ) : null}
+          {verification.verifiedFranchise ? (
+            <p>العمل: {String(verification.verifiedFranchise)}</p>
+          ) : null}
+        </div>
+      </details>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-white/[0.06] to-destructive/10">
@@ -528,6 +565,7 @@ export function AIGenerator() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-0">
+                  {renderVerification(question)}
                   {renderAsset(question)}
                   {question.coverImageFailureReason && (
                     <p className="text-xs text-muted-foreground">

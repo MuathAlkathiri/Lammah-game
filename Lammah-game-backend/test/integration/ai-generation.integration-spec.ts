@@ -2,6 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { Connection, Model, Types } from 'mongoose';
 import request from 'supertest';
 import { AssetService } from '../../src/modules/ai-agent/application/asset.service';
+import { EntityVerificationService } from '../../src/modules/ai-agent/application/entity-verification.service';
+import type {
+  EntityVerificationRequest,
+  VerifiedEntity,
+} from '../../src/modules/ai-agent/application/entity-verification.types';
 import { LlmClientService } from '../../src/modules/ai-agent/infrastructure/ai/llm-client.service';
 import { Question } from '../../src/modules/questions/schemas/question.schema';
 import { FakeLlmProvider } from '../fixtures/fake-llm.provider';
@@ -41,6 +46,88 @@ describe('AI Generation HTTP orchestration integration', () => {
         : { assetStatus: 'NOT_REQUIRED' },
     ),
   };
+  const verification = {
+    verify: jest.fn(
+      async (
+        requestValue: EntityVerificationRequest,
+      ): Promise<VerifiedEntity> => ({
+        verificationStatus: 'VERIFIED',
+        canonicalEntity: requestValue.proposedEntity,
+        canonicalAnswer: requestValue.proposedAnswer,
+        entityType: requestValue.entityType,
+        aliases: [requestValue.proposedEntity],
+        originalLanguageAliases: [requestValue.proposedEntity],
+        transliterations: [],
+        ...(requestValue.franchise
+          ? { franchise: requestValue.franchise }
+          : {}),
+        ...(requestValue.artist
+          ? {
+              song: {
+                title: requestValue.proposedEntity,
+                artist: requestValue.artist,
+                titleAliases: [requestValue.proposedEntity],
+                artistAliases: [requestValue.artist],
+              },
+            }
+          : {}),
+        confidence: {
+          overall: 0.9,
+          identity: 0.9,
+          answer: 0.9,
+          association: 0.9,
+        },
+        evidence: [
+          {
+            sourceTitle: 'integration fixture',
+            sourceDomain: 'integration.fixture',
+            sourceTier: 'official',
+            supportsIdentity: true,
+            supportsAnswer: true,
+            supportsAssociation: true,
+          },
+        ],
+        searchHints: {
+          requiredTerms: [requestValue.proposedEntity],
+          trustedAliases: [requestValue.proposedEntity],
+          franchiseTerms: requestValue.franchise
+            ? [requestValue.franchise]
+            : [],
+          providerHints: [],
+          prohibitedGenericTerms: [],
+        },
+        issues: ['ENTITY_VERIFICATION_SUCCEEDED'],
+        cacheHit: false,
+        durationMs: 1,
+      }),
+    ),
+    diagnostics: jest.fn((entity: VerifiedEntity, required: boolean) => ({
+      verificationRequired: required,
+      verificationProvider: 'wigolo',
+      verificationStatus: entity.verificationStatus,
+      verificationCacheHit: Boolean(entity.cacheHit),
+      canonicalEntity: entity.canonicalEntity,
+      canonicalAnswer: entity.canonicalAnswer,
+      verifiedAliasesCount: entity.aliases.length,
+      evidenceSourceCount: entity.evidence.length,
+      evidenceTierCounts: { official: entity.evidence.length },
+      overallConfidence: entity.confidence.overall,
+      identityConfidence: entity.confidence.identity,
+      answerConfidence: entity.confidence.answer,
+      associationConfidence: entity.confidence.association,
+      verificationDurationMs: entity.durationMs ?? 0,
+      verificationIssueCodes: entity.issues,
+      ...(entity.song
+        ? {
+            canonicalSongTitle: entity.song.title,
+            canonicalArtist: entity.song.artist,
+            titleAliasCount: entity.song.titleAliases.length,
+            artistAliasCount: entity.song.artistAliases.length,
+          }
+        : {}),
+      ...(entity.franchise ? { verifiedFranchise: entity.franchise } : {}),
+    })),
+  };
 
   beforeAll(async () => {
     database = await connectTestDatabase();
@@ -54,7 +141,9 @@ describe('AI Generation HTTP orchestration integration', () => {
           .overrideProvider(LlmClientService)
           .useValue(llm)
           .overrideProvider(AssetService)
-          .useValue(assets),
+          .useValue(assets)
+          .overrideProvider(EntityVerificationService)
+          .useValue(verification),
     });
     adminToken = await loginForToken(app, fixtureCredentials.admin);
     userToken = await loginForToken(app, fixtureCredentials.user);
@@ -323,12 +412,8 @@ describe('AI Generation HTTP orchestration integration', () => {
       status: 'draft',
       primaryAsset: { url: '/uploads/test/persisted.jpg' },
       gameplayMetadata: { interaction: 'trivia' },
-      aiMetadata: {
-        model: 'fake',
-        fixture: true,
-        savedFromReviewedGenerator: true,
-      },
     });
+    expect(saved.body.savedQuestions[0]).not.toHaveProperty('aiMetadata');
     expectSafeResponse(saved.body);
 
     const duplicate = await request(app.getHttpServer())

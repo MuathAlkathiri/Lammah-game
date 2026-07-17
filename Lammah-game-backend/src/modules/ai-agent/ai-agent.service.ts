@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -34,6 +35,8 @@ import {
   AssetRequest,
   AssetStatus,
   GameMode,
+  MediaIntent,
+  MediaSourceType,
   QuestionAssetType,
 } from './contracts/asset-provider.interface';
 import { GameplayValidatorService } from './services/gameplay-validator.service';
@@ -41,6 +44,12 @@ import { WrongAnswerRepairService } from './services/wrong-answer-repair.service
 import { QuestionWordingService } from './services/question-wording.service';
 import { LlmClientService } from './infrastructure/ai/llm-client.service';
 import { ContentOrchestratorService } from './application/content-orchestrator.service';
+import { EntityVerificationService } from './application/entity-verification.service';
+import { entityVerificationPolicy } from './application/entity-verification.policy';
+import type {
+  EntityVerificationRequest,
+  VerificationDiagnostics,
+} from './application/entity-verification.types';
 import { AgentTrace } from './agents/llm-agent.interface';
 import { QuestionRepository } from '../questions/persistence/question.repository';
 import {
@@ -48,6 +57,13 @@ import {
   GulfSong,
   gulfMusicQuestionPolicy,
 } from './application/gulf-music-question.policy';
+import {
+  CategoryGenerationProfile,
+  CategoryProfileResolution,
+  categoryProfileRegistry,
+} from './application/category-generation-profile.registry';
+import type { QuestionPatternId } from './application/generation-quality.types';
+import { preVerificationQualityValidator } from './application/pre-verification-quality.validator';
 
 const execFileAsync = promisify(execFile);
 
@@ -98,6 +114,8 @@ type ReviewedQuestionDraft = {
     country?: string;
     language: 'ar';
   };
+  verificationDiagnostics?: VerificationDiagnostics;
+  aiMetadata?: Record<string, unknown>;
 };
 
 type ReviewedGenerationContext = {
@@ -111,6 +129,7 @@ type ReviewedGenerationContext = {
   source: 'categoryId' | 'manualNames';
   loadedKnowledge: LoadedKnowledge;
   gulfMusic: boolean;
+  categoryProfileResolution: CategoryProfileResolution;
 };
 
 interface ChatCompletionResponse {
@@ -155,6 +174,7 @@ export class AiAgentService {
     private llmClient: LlmClientService,
     private contentOrchestrator: ContentOrchestratorService,
     private readonly questionRepository: QuestionRepository,
+    @Optional() private readonly entityVerification?: EntityVerificationService,
   ) {
     this.aiProvider =
       this.configService.get<string>('AI_PROVIDER')?.toLowerCase() ??
@@ -328,61 +348,72 @@ export class AiAgentService {
   async generateReviewedQuestions(dto: GenerateReviewedQuestionsDto) {
     try {
       const context = await this.resolveReviewedGenerationContext(dto);
-      const gameplayConfig = context.gulfMusic
-        ? this.gulfMusicGameplayConfig(context.gameplayConfig)
-        : context.gameplayConfig;
-      const prompt = this.promptBuilder.buildReviewedQuestionsPrompt({
-        catalogName: context.catalogName,
-        categoryName: context.categoryName,
-        difficulty: context.difficulty,
-        count: context.count,
-        language: context.language,
-        knowledgeFile: context.loadedKnowledge.knowledgeFile,
-        usedDefaultKnowledge: context.loadedKnowledge.usedDefaultKnowledge,
-        knowledge: context.loadedKnowledge.knowledge,
-        aiConfig: context.aiConfig,
-        gameplayConfig,
-      });
+      const gameplayConfig = this.profileGameplayConfig(
+        context.categoryProfileResolution.profile,
+        context.gameplayConfig,
+      );
       const useMultiAgent =
         this.configService
           .get<string>('MULTI_AGENT_CONTENT_PIPELINE')
           ?.toLowerCase() === 'true';
-      let aiResponse: string;
-      if (useMultiAgent) {
-        try {
-          const orchestrated = await this.contentOrchestrator.execute(prompt, {
-            knowledgeFile: context.loadedKnowledge.knowledgeFile,
-            language: context.language,
-            difficulty: context.difficulty,
-            modelConfig: { temperature: context.aiConfig?.temperature },
-          });
-          aiResponse = JSON.stringify(orchestrated);
-        } catch {
+      const songs = context.gulfMusic
+        ? gulfMusicQuestionPolicy.parseKnowledge(
+            context.loadedKnowledge.knowledge.raw,
+          )
+        : [];
+      let questions: ReviewedQuestionDraft[];
+      if (context.gulfMusic) {
+        questions = this.buildGulfMusicDrafts(
+          songs,
+          context.difficulty,
+          songs.length,
+          gameplayConfig?.maxAudioDuration ?? 15,
+        );
+      } else {
+        const prompt = this.promptBuilder.buildReviewedQuestionsPrompt({
+          catalogName: context.catalogName,
+          categoryName: context.categoryName,
+          difficulty: context.difficulty,
+          count: context.count,
+          language: context.language,
+          knowledgeFile: context.loadedKnowledge.knowledgeFile,
+          usedDefaultKnowledge: context.loadedKnowledge.usedDefaultKnowledge,
+          knowledge: context.loadedKnowledge.knowledge,
+          aiConfig: context.aiConfig,
+          gameplayConfig,
+          categoryProfile: context.categoryProfileResolution.profile,
+        });
+        let aiResponse: string;
+        if (useMultiAgent) {
+          try {
+            const orchestrated = await this.contentOrchestrator.execute(
+              prompt,
+              {
+                knowledgeFile: context.loadedKnowledge.knowledgeFile,
+                language: context.language,
+                difficulty: context.difficulty,
+                modelConfig: { temperature: context.aiConfig?.temperature },
+              },
+            );
+            aiResponse = JSON.stringify(orchestrated);
+          } catch {
+            aiResponse = await this.callAiProvider(
+              prompt,
+              context.aiConfig?.temperature,
+            );
+          }
+        } else {
           aiResponse = await this.callAiProvider(
             prompt,
             context.aiConfig?.temperature,
           );
         }
-      } else {
-        aiResponse = await this.callAiProvider(
-          prompt,
-          context.aiConfig?.temperature,
-        );
+        questions = this.parseAndNormalizeReviewedResponse(
+          aiResponse,
+          context.difficulty,
+        ).slice(0, context.count);
       }
-      const questions = this.parseAndNormalizeReviewedResponse(
-        aiResponse,
-        context.difficulty,
-      ).slice(0, context.count);
-      const groundedQuestions = context.gulfMusic
-        ? this.normalizeGulfMusicDrafts(
-            questions,
-            gulfMusicQuestionPolicy.parseKnowledge(
-              context.loadedKnowledge.knowledge.raw,
-            ),
-            context.difficulty,
-            gameplayConfig?.maxAudioDuration ?? 6,
-          )
-        : questions;
+      const groundedQuestions = context.gulfMusic ? questions : questions;
       const normalizedGameplayConfig =
         this.promptBuilder.normalizeGameplayConfig(gameplayConfig);
       const gameplayValidatedQuestions = groundedQuestions.map((question) =>
@@ -402,10 +433,21 @@ export class AiAgentService {
         (question, index) =>
           this.validateReviewedQuestionQuality(question, index),
       );
-      const questionsWithAssets = await this.processDraftAssets(
-        qualityValidatedQuestions,
+      const preVerificationValidatedQuestions =
+        this.applyPreVerificationQuality(
+          context.categoryProfileResolution.profile,
+          qualityValidatedQuestions,
+        );
+      let questionsWithAssets = await this.processDraftAssets(
+        preVerificationValidatedQuestions,
         gameplayConfig,
       );
+      if (context.gulfMusic) {
+        questionsWithAssets = this.selectReadyGulfMusicQuestions(
+          questionsWithAssets,
+          context.count,
+        );
+      }
 
       if (questionsWithAssets.length === 0) {
         throw new BadRequestException('AI did not return any question drafts');
@@ -426,6 +468,13 @@ export class AiAgentService {
           gameModes: normalizedGameplayConfig.gameModes,
           gameplayValidatorUsed: true,
           multiAgentContentPipeline: useMultiAgent,
+          categoryProfileId: context.categoryProfileResolution.profile.id,
+          categoryProfileVersion:
+            context.categoryProfileResolution.profile.version,
+          categoryProfileFallbackUsed:
+            context.categoryProfileResolution.fallbackUsed,
+          categoryProfileIssueCodes:
+            context.categoryProfileResolution.issues.map((issue) => issue.code),
           providerSelection: 'assetService',
           gulfMusicWorkflow: context.gulfMusic,
           imageProviders: ['wikimedia'],
@@ -528,6 +577,9 @@ export class AiAgentService {
           gameplayMetadata: raw.gameplayMetadata ?? {},
           aiMetadata: {
             ...((raw.aiMetadata as object) ?? {}),
+            ...(raw.verificationDiagnostics
+              ? { verificationDiagnostics: raw.verificationDiagnostics }
+              : {}),
             savedFromReviewedGenerator: true,
             savedAt: new Date().toISOString(),
           },
@@ -599,6 +651,11 @@ export class AiAgentService {
       const loadedKnowledge = await this.knowledgeLoader.load(
         category.aiConfig?.knowledgeFile || inferredKnowledgeFile,
       );
+      const categoryProfileResolution = categoryProfileRegistry.resolve({
+        catalogName,
+        categoryName,
+        knowledgeFile: loadedKnowledge.knowledgeFile,
+      });
 
       return {
         catalogName,
@@ -610,6 +667,7 @@ export class AiAgentService {
         gameplayConfig: category.gameplayConfig,
         source: 'categoryId',
         loadedKnowledge,
+        categoryProfileResolution,
         gulfMusic: gulfMusicQuestionPolicy.isGulfMusicCategory({
           catalogName,
           categoryName,
@@ -631,6 +689,11 @@ export class AiAgentService {
     const loadedKnowledge = await this.knowledgeLoader.load(
       inferredKnowledgeFile,
     );
+    const categoryProfileResolution = categoryProfileRegistry.resolve({
+      catalogName: dto.catalogName,
+      categoryName: dto.categoryName,
+      knowledgeFile: loadedKnowledge.knowledgeFile,
+    });
 
     return {
       catalogName: dto.catalogName,
@@ -640,11 +703,79 @@ export class AiAgentService {
       language,
       source: 'manualNames',
       loadedKnowledge,
+      categoryProfileResolution,
       gulfMusic: gulfMusicQuestionPolicy.isGulfMusicCategory({
         catalogName: dto.catalogName,
         categoryName: dto.categoryName,
         knowledgeFile: loadedKnowledge.knowledgeFile,
       }),
+    };
+  }
+
+  private profileGameplayConfig(
+    profile: CategoryGenerationProfile,
+    current?: CategoryGameplayConfig,
+  ): CategoryGameplayConfig {
+    if (profile.id === 'gulf-music') {
+      return this.gulfMusicGameplayConfig(current);
+    }
+
+    const zeroModes: NonNullable<CategoryGameplayConfig['gameModes']> = {
+      trivia: 0,
+      identifyCharacter: 0,
+      identifyVoice: 0,
+      identifyImage: 0,
+      completeQuote: 0,
+      timeline: 0,
+      emojiPuzzle: 0,
+      identifySong: 0,
+      identifySinger: 0,
+      identifyMusicIntro: 0,
+    };
+    const weightedModes = profile.allowedGameModes.reduce(
+      (acc, mode) => {
+        acc[mode] =
+          current?.gameModes?.[mode] ??
+          Math.floor(100 / profile.allowedGameModes.length);
+        return acc;
+      },
+      { ...zeroModes },
+    );
+
+    const explicitWeights = Object.entries(profile.patternWeights ?? {});
+    if (explicitWeights.length) {
+      for (const mode of profile.allowedGameModes) weightedModes[mode] = 0;
+      const patternToMode: Partial<Record<QuestionPatternId, GameMode>> = {
+        textTrivia: 'trivia',
+        identifyCharacter: 'identifyCharacter',
+        identifyLocation: 'trivia',
+        identifyItem: 'trivia',
+        identifyWeapon: 'trivia',
+        identifyBoss: 'trivia',
+        identifyGame: 'trivia',
+        timelineEvent: 'timeline',
+        emojiPuzzle: 'emojiPuzzle',
+        identifySong: 'identifySong',
+      };
+      for (const [patternId, weight] of explicitWeights) {
+        const mode = patternToMode[patternId as QuestionPatternId];
+        if (mode && profile.allowedGameModes.includes(mode)) {
+          weightedModes[mode] = (weightedModes[mode] ?? 0) + (weight ?? 0);
+        }
+      }
+    }
+
+    return {
+      ...current,
+      gameModes: {
+        ...zeroModes,
+        ...weightedModes,
+        ...current?.gameModes,
+      },
+      supportedAssetTypes: current?.supportedAssetTypes?.length
+        ? current.supportedAssetTypes
+        : profile.supportedAssetTypes,
+      maxAudioDuration: current?.maxAudioDuration ?? 6,
     };
   }
 
@@ -666,8 +797,127 @@ export class AiAgentService {
         identifyMusicIntro: 0,
       },
       supportedAssetTypes: ['audio', 'image'],
+      maxAudioDuration: current?.maxAudioDuration ?? 15,
+    };
+  }
+
+  private fromGameplayConfig(
+    current?: CategoryGameplayConfig,
+  ): CategoryGameplayConfig {
+    return {
+      ...current,
+      gameModes: {
+        trivia: 45,
+        identifyCharacter: 35,
+        identifyVoice: 0,
+        identifyImage: 10,
+        completeQuote: 0,
+        timeline: 10,
+        emojiPuzzle: 0,
+        identifySong: 0,
+        identifySinger: 0,
+        identifyMusicIntro: 0,
+      },
+      supportedAssetTypes: ['text', 'image', 'video', 'timeline'],
       maxAudioDuration: current?.maxAudioDuration ?? 6,
     };
+  }
+
+  private videoGamesGameplayConfig(
+    current?: CategoryGameplayConfig,
+  ): CategoryGameplayConfig {
+    return {
+      ...current,
+      gameModes: {
+        trivia: 50,
+        identifyCharacter: 20,
+        identifyVoice: 0,
+        identifyImage: 15,
+        completeQuote: 0,
+        timeline: 10,
+        emojiPuzzle: 5,
+        identifySong: 0,
+        identifySinger: 0,
+        identifyMusicIntro: 0,
+      },
+      supportedAssetTypes: ['text', 'image', 'video', 'timeline', 'emoji'],
+      maxAudioDuration: current?.maxAudioDuration ?? 6,
+    };
+  }
+
+  private buildGulfMusicDrafts(
+    songs: GulfSong[],
+    difficulty: 'easy' | 'medium' | 'hard',
+    count: number,
+    duration: number,
+  ): ReviewedQuestionDraft[] {
+    const orderedSongs = [
+      ...songs.filter((song) => song.difficulty === difficulty),
+      ...songs.filter((song) => song.difficulty !== difficulty),
+    ];
+    const selectedSongs = orderedSongs.slice(0, Math.min(count, songs.length));
+    if (!selectedSongs.length) {
+      throw new BadRequestException('MUSIC_SONG_NOT_VERIFIED');
+    }
+
+    return selectedSongs.map((song) => {
+      const key = gulfMusicQuestionPolicy.duplicateKey(song);
+      const wrongAnswers = songs
+        .filter(
+          (candidate) =>
+            gulfMusicQuestionPolicy.duplicateKey(candidate) !== key,
+        )
+        .map((candidate) => candidate.title)
+        .filter((title, index, values) => values.indexOf(title) === index)
+        .slice(0, 3);
+      const assetRequest = gulfMusicQuestionPolicy.assetRequest(song, duration);
+
+      return {
+        question: GulfMusicQuestionPolicy.question,
+        correctAnswer: song.title,
+        wrongAnswers,
+        difficulty,
+        gameMode: 'identifySong' as const,
+        type: 'audio' as const,
+        assetRequest,
+        assetStatus: 'PENDING' as const,
+        asset: null,
+        primaryAssetRequest: assetRequest,
+        primaryAssetStatus: 'PENDING' as const,
+        primaryAsset: null,
+        coverImageRequest: null,
+        coverImageStatus: 'NOT_REQUIRED' as const,
+        coverImage: null,
+        coverImageFailureReason: null,
+        explanation: `استمع إلى المقطع وخمّن عنوان الأغنية الخليجية. الإجابة هي "${song.title}" للفنان ${song.artist}.`,
+        qualityScore: 10,
+        issues: [],
+        musicMetadata: {
+          title: song.title,
+          artist: song.artist,
+          aliases: song.titleAliases,
+          artistAliases: song.artistAliases,
+          ...(song.releaseYear ? { releaseYear: song.releaseYear } : {}),
+          region: 'gulf' as const,
+          country: song.country,
+          language: 'ar' as const,
+        },
+      };
+    });
+  }
+
+  private selectReadyGulfMusicQuestions(
+    questions: ReviewedQuestionDraft[],
+    count: number,
+  ): ReviewedQuestionDraft[] {
+    const readyQuestions = questions.filter(
+      (question) =>
+        question.gameMode === 'identifySong' &&
+        question.type === 'audio' &&
+        question.assetStatus === 'READY' &&
+        question.asset,
+    );
+    return readyQuestions.slice(0, count);
   }
 
   private normalizeGulfMusicDrafts(
@@ -715,6 +965,7 @@ export class AiAgentService {
           primaryAssetRequest: assetRequest,
           assetStatus: 'PENDING' as const,
           primaryAssetStatus: 'PENDING' as const,
+          issues: [],
           musicMetadata: {
             title: song.title,
             artist: song.artist,
@@ -754,10 +1005,73 @@ export class AiAgentService {
           supportedAssetTypes,
           normalizedGameplayConfig.maxAudioDuration,
         );
+        if (question.aiMetadata?.preVerificationStatus === 'REJECTED') {
+          return question;
+        }
 
         // Gameplay validation still owns the legacy field, so it wins while both shapes coexist.
-        const primaryRequest =
+        let primaryRequest =
           question.assetRequest ?? question.primaryAssetRequest;
+        let coverRequest = question.coverImageRequest;
+        let verificationDiagnostics: VerificationDiagnostics | undefined;
+        if (this.entityVerification && (primaryRequest || coverRequest)) {
+          const request = this.entityVerificationRequest(
+            question,
+            primaryRequest ?? coverRequest!,
+          );
+          const verified = await this.entityVerification.verify(request);
+          verificationDiagnostics = this.entityVerification.diagnostics(
+            verified,
+            !request.locallyGrounded,
+          );
+          if (!entityVerificationPolicy.maySearchProviders(verified, request)) {
+            if (!primaryRequest && coverRequest) {
+              return {
+                ...question,
+                primaryAssetRequest: null,
+                primaryAssetStatus: 'NOT_REQUIRED' as const,
+                primaryAsset: null,
+                coverImageRequest: coverRequest,
+                coverImageStatus: 'FAILED' as const,
+                coverImage: null,
+                assetRequest: null,
+                assetStatus: 'NOT_REQUIRED' as const,
+                asset: null,
+                coverImageFailureReason:
+                  'Entity verification did not permit cover image provider search',
+                verificationDiagnostics,
+                issues: Array.from(
+                  new Set([...question.issues, ...verified.issues]),
+                ),
+              };
+            }
+            return {
+              ...question,
+              primaryAssetRequest: primaryRequest,
+              primaryAssetStatus: 'FAILED' as const,
+              primaryAsset: null,
+              coverImageRequest: coverRequest,
+              coverImageStatus: 'FAILED' as const,
+              coverImage: null,
+              assetRequest: primaryRequest,
+              assetStatus: 'FAILED' as const,
+              asset: null,
+              assetFailureReason:
+                'Entity verification did not permit provider search',
+              assetFailureStep: 'entity-verification',
+              verificationDiagnostics,
+              issues: Array.from(
+                new Set([...question.issues, ...verified.issues]),
+              ),
+            };
+          }
+          primaryRequest = primaryRequest
+            ? this.applyVerifiedEntity(primaryRequest, verified)
+            : null;
+          coverRequest = coverRequest
+            ? this.applyVerifiedEntity(coverRequest, verified, true)
+            : null;
+        }
         const primaryResult =
           question.primaryAssetStatus === 'READY' && question.primaryAsset
             ? { assetStatus: 'READY' as const, asset: question.primaryAsset }
@@ -765,9 +1079,7 @@ export class AiAgentService {
         const coverResult =
           question.coverImageStatus === 'READY' && question.coverImage
             ? { assetStatus: 'READY' as const, asset: question.coverImage }
-            : await this.assetService.process(
-                question.coverImageRequest ?? undefined,
-              );
+            : await this.assetService.process(coverRequest ?? undefined);
         const primaryFailure =
           primaryResult.assetStatus === 'FAILED' ? primaryResult : null;
         const coverFailure =
@@ -796,9 +1108,147 @@ export class AiAgentService {
           assetFailureReason: primaryFailure?.assetFailureReason,
           assetFailureStep: primaryFailure?.assetFailureStep,
           assetFailureDiagnostics: primaryFailure?.assetFailureDiagnostics,
+          verificationDiagnostics,
         };
       }),
     );
+  }
+
+  private applyPreVerificationQuality(
+    profile: CategoryGenerationProfile,
+    questions: ReviewedQuestionDraft[],
+  ): ReviewedQuestionDraft[] {
+    return questions.map((question) => {
+      const selectedPatternId =
+        preVerificationQualityValidator.inferPatternId(question);
+      const validation = preVerificationQualityValidator.validate(profile, {
+        question: question.question,
+        correctAnswer: question.correctAnswer,
+        gameMode: question.gameMode,
+        type: question.type,
+        assetRequest: question.assetRequest ?? question.primaryAssetRequest,
+        selectedPatternId,
+      });
+      const issueCodes = validation.issues.map((issue) => issue.code);
+      const aiMetadata = {
+        ...question.aiMetadata,
+        categoryProfileId: profile.id,
+        categoryProfileVersion: profile.version,
+        selectedPatternId,
+        preVerificationStatus: validation.status,
+        preVerificationIssueCodes: issueCodes,
+        repairAttempted: false,
+        regenerationAttempted: false,
+      };
+
+      if (validation.status !== 'REJECTED') {
+        return {
+          ...question,
+          aiMetadata,
+          issues: Array.from(new Set([...question.issues, ...issueCodes])),
+        };
+      }
+
+      const failedStatus =
+        question.assetRequest || question.primaryAssetRequest
+          ? ('FAILED' as const)
+          : question.assetStatus;
+
+      return {
+        ...question,
+        aiMetadata,
+        primaryAssetStatus: failedStatus,
+        assetStatus: failedStatus,
+        coverImageStatus:
+          question.coverImageRequest || question.coverImage
+            ? ('FAILED' as const)
+            : question.coverImageStatus,
+        assetFailureStep:
+          question.assetRequest || question.primaryAssetRequest
+            ? 'pre-verification-quality'
+            : question.assetFailureStep,
+        assetFailureReason:
+          question.assetRequest || question.primaryAssetRequest
+            ? 'Pre-verification quality rejected the draft'
+            : question.assetFailureReason,
+        issues: Array.from(new Set([...question.issues, ...issueCodes])),
+      };
+    });
+  }
+
+  private entityVerificationRequest(
+    question: ReviewedQuestionDraft,
+    asset: AssetRequest,
+  ): EntityVerificationRequest {
+    const song =
+      asset.entityType === 'song' ||
+      ['identifySong', 'identifySinger', 'identifyMusicIntro'].includes(
+        question.gameMode,
+      );
+    return {
+      proposedEntity:
+        this.readString(asset.canonicalEntity) ||
+        this.readString(asset.entity) ||
+        this.readString(asset.title) ||
+        question.correctAnswer,
+      proposedAnswer: question.correctAnswer,
+      entityType: song
+        ? 'song'
+        : asset.entityType === 'character' ||
+            asset.entityType === 'anime-character'
+          ? this.readString(asset.categoryType).toLowerCase() === 'anime' ||
+            this.readString(asset.categoryType).toLowerCase() === 'manga'
+            ? 'anime-character'
+            : 'character'
+          : asset.entityType === 'historical-person'
+            ? 'historical-figure'
+            : asset.entityType === 'place' ||
+                asset.entityType === 'city' ||
+                asset.entityType === 'landmark'
+              ? 'place'
+              : 'unknown',
+      language: 'ar',
+      gameMode: question.gameMode,
+      artist: this.readString(asset.artist) || undefined,
+      franchise: this.readString(asset.franchise) || undefined,
+      intendedAsset: song
+        ? 'song'
+        : question.gameMode === 'identifyVoice'
+          ? 'voice'
+          : asset.purpose === 'decorative'
+            ? 'cover-image'
+            : asset.type === 'audio'
+              ? 'audio'
+              : asset.type === 'video'
+                ? 'video'
+                : 'image',
+      context:
+        this.readString(asset.searchContext ?? asset.context) || undefined,
+      locallyGrounded: Boolean(question.musicMetadata),
+    };
+  }
+
+  private applyVerifiedEntity(
+    asset: AssetRequest,
+    verified: import('./application/entity-verification.types').VerifiedEntity,
+    cover = false,
+  ): AssetRequest {
+    const canonical =
+      cover && verified.franchise
+        ? verified.franchise
+        : verified.canonicalEntity;
+    return {
+      ...asset,
+      entity: canonical,
+      canonicalEntity: canonical,
+      searchEntity: canonical,
+      query: undefined,
+      aliases:
+        cover && verified.franchise ? [verified.franchise] : verified.aliases,
+      franchise: verified.franchise,
+      artist: verified.song?.artist ?? asset.artist,
+      artistAliases: verified.song?.artistAliases ?? asset.artistAliases,
+    };
   }
 
   private async repairQuestionWording(
@@ -967,7 +1417,7 @@ export class AiAgentService {
     }
 
     if (
-      question.type === 'audio' &&
+      ['audio', 'video'].includes(question.type) &&
       question.assetRequest &&
       maxAudioDuration
     ) {
@@ -1078,14 +1528,17 @@ export class AiAgentService {
     const qualityScore = this.normalizeQualityScore(raw.qualityScore, issues);
     const gameMode = this.normalizeGameMode(raw.gameMode, issues);
     const type = this.normalizeQuestionAssetType(raw.type, issues);
+    const draftMetadata = this.normalizeDraftAssetMetadata(raw);
     const primaryAssetRequest = this.normalizeAssetRequest(
       raw.primaryAssetRequest ?? raw.assetRequest,
       type,
+      draftMetadata,
     );
     const assetRequest = primaryAssetRequest;
     const coverImageRequest = this.normalizeAssetRequest(
       raw.coverImageRequest,
       'image',
+      draftMetadata,
     );
     const rawPrimaryAsset = raw.primaryAsset ?? raw.asset;
     const primaryAsset =
@@ -1194,6 +1647,7 @@ export class AiAgentService {
       'text',
       'image',
       'audio',
+      'video',
       'quote',
       'emoji',
       'timeline',
@@ -1213,72 +1667,214 @@ export class AiAgentService {
   private normalizeAssetRequest(
     value: unknown,
     type: QuestionAssetType,
+    draftMetadata: Record<string, unknown> = {},
   ): AssetRequest | null {
     if (type === 'text' && value == null) {
       return null;
     }
 
     if (!value || typeof value !== 'object') {
-      return {
-        type,
-      };
+      return this.enrichAssetRequestWithDraftMetadata({ type }, draftMetadata);
     }
 
     const rawAssetRequest = value as Record<string, unknown>;
 
-    return {
-      ...rawAssetRequest,
-      type,
-      ...(this.readString(rawAssetRequest.provider)
-        ? { provider: this.readString(rawAssetRequest.provider) }
-        : {}),
-      ...(this.readString(rawAssetRequest.query)
-        ? { query: this.readString(rawAssetRequest.query) }
-        : {}),
-      entity: this.readString(rawAssetRequest.entity),
-      assetType: type,
-      ...(this.readString(rawAssetRequest.franchise)
-        ? { franchise: this.readString(rawAssetRequest.franchise) }
-        : {}),
-      ...(this.readString(rawAssetRequest.language)
-        ? { language: this.readString(rawAssetRequest.language) }
-        : {}),
-      ...(this.readString(rawAssetRequest.originalName)
-        ? { originalName: this.readString(rawAssetRequest.originalName) }
-        : {}),
-      ...(this.readString(rawAssetRequest.localizedName)
-        ? { localizedName: this.readString(rawAssetRequest.localizedName) }
-        : {}),
-      ...(this.readString(rawAssetRequest.englishTitle)
-        ? { englishTitle: this.readString(rawAssetRequest.englishTitle) }
-        : {}),
-      ...(this.readString(rawAssetRequest.arabicTitle)
-        ? { arabicTitle: this.readString(rawAssetRequest.arabicTitle) }
-        : {}),
-      context: this.readString(rawAssetRequest.context),
-      ...(this.readString(rawAssetRequest.entityType)
-        ? { entityType: this.readString(rawAssetRequest.entityType) }
-        : {}),
-      ...(this.readString(rawAssetRequest.visualHint)
-        ? { visualHint: this.readString(rawAssetRequest.visualHint) }
-        : {}),
-      ...(this.readString(rawAssetRequest.categoryType)
-        ? { categoryType: this.readString(rawAssetRequest.categoryType) }
-        : {}),
-      ...(this.readString(rawAssetRequest.purpose) === 'decorative' ||
-      this.readString(rawAssetRequest.purpose) === 'gameplay'
-        ? {
-            purpose: this.readString(rawAssetRequest.purpose) as
-              'decorative' | 'gameplay',
-          }
-        : {}),
-      ...(rawAssetRequest.duration !== undefined
-        ? { duration: Number(rawAssetRequest.duration) }
-        : {}),
-      ...(rawAssetRequest.speaker !== undefined
-        ? { speaker: this.readString(rawAssetRequest.speaker) }
-        : {}),
+    return this.enrichAssetRequestWithDraftMetadata(
+      {
+        ...rawAssetRequest,
+        type,
+        ...(this.readString(rawAssetRequest.provider)
+          ? { provider: this.readString(rawAssetRequest.provider) }
+          : {}),
+        ...(this.readString(rawAssetRequest.query)
+          ? { query: this.readString(rawAssetRequest.query) }
+          : {}),
+        entity: this.readString(rawAssetRequest.entity),
+        assetType: type,
+        ...(this.readString(rawAssetRequest.franchise)
+          ? { franchise: this.readString(rawAssetRequest.franchise) }
+          : {}),
+        ...(this.readString(rawAssetRequest.language)
+          ? { language: this.readString(rawAssetRequest.language) }
+          : {}),
+        ...(this.readString(rawAssetRequest.originalName)
+          ? { originalName: this.readString(rawAssetRequest.originalName) }
+          : {}),
+        ...(this.readString(rawAssetRequest.localizedName)
+          ? { localizedName: this.readString(rawAssetRequest.localizedName) }
+          : {}),
+        ...(this.readString(rawAssetRequest.englishTitle)
+          ? { englishTitle: this.readString(rawAssetRequest.englishTitle) }
+          : {}),
+        ...(this.readString(rawAssetRequest.arabicTitle)
+          ? { arabicTitle: this.readString(rawAssetRequest.arabicTitle) }
+          : {}),
+        context: this.readString(rawAssetRequest.context),
+        ...(this.readString(rawAssetRequest.entityType)
+          ? { entityType: this.readString(rawAssetRequest.entityType) }
+          : {}),
+        ...(this.readString(rawAssetRequest.visualHint)
+          ? { visualHint: this.readString(rawAssetRequest.visualHint) }
+          : {}),
+        ...(this.readString(rawAssetRequest.categoryType)
+          ? { categoryType: this.readString(rawAssetRequest.categoryType) }
+          : {}),
+        ...(this.readString(rawAssetRequest.purpose) === 'decorative' ||
+        this.readString(rawAssetRequest.purpose) === 'gameplay'
+          ? {
+              purpose: this.readString(rawAssetRequest.purpose) as
+                'decorative' | 'gameplay',
+            }
+          : {}),
+        ...(rawAssetRequest.duration !== undefined
+          ? { duration: Number(rawAssetRequest.duration) }
+          : {}),
+        ...(rawAssetRequest.speaker !== undefined
+          ? { speaker: this.readString(rawAssetRequest.speaker) }
+          : {}),
+        ...(this.readString(rawAssetRequest.searchEntity)
+          ? { searchEntity: this.readString(rawAssetRequest.searchEntity) }
+          : {}),
+        ...(this.readString(rawAssetRequest.searchContext)
+          ? { searchContext: this.readString(rawAssetRequest.searchContext) }
+          : {}),
+        ...(this.readString(rawAssetRequest.coverTopic)
+          ? { coverTopic: this.readString(rawAssetRequest.coverTopic) }
+          : {}),
+        ...(this.readString(rawAssetRequest.gameMode)
+          ? { gameMode: this.readString(rawAssetRequest.gameMode) as GameMode }
+          : {}),
+        ...(this.readString(rawAssetRequest.mediaIntent)
+          ? {
+              mediaIntent: this.normalizeMediaIntent(
+                rawAssetRequest.mediaIntent,
+              ),
+            }
+          : {}),
+        ...(this.readString(rawAssetRequest.sourceType)
+          ? {
+              sourceType: this.normalizeMediaSourceType(
+                rawAssetRequest.sourceType,
+              ),
+            }
+          : {}),
+        ...(this.readString(rawAssetRequest.title)
+          ? { title: this.readString(rawAssetRequest.title) }
+          : {}),
+        ...(this.readString(rawAssetRequest.artist)
+          ? { artist: this.readString(rawAssetRequest.artist) }
+          : {}),
+        ...(Array.isArray(rawAssetRequest.aliases)
+          ? { aliases: this.readStringArray(rawAssetRequest.aliases) }
+          : {}),
+        ...(Array.isArray(rawAssetRequest.artistAliases)
+          ? {
+              artistAliases: this.readStringArray(
+                rawAssetRequest.artistAliases,
+              ),
+            }
+          : {}),
+      },
+      draftMetadata,
+    );
+  }
+
+  private normalizeMediaIntent(value: unknown): MediaIntent | undefined {
+    const normalized = this.readString(value);
+    return ['music', 'voice', 'dialogue', 'speech'].includes(normalized)
+      ? (normalized as MediaIntent)
+      : undefined;
+  }
+
+  private normalizeMediaSourceType(
+    value: unknown,
+  ): MediaSourceType | undefined {
+    const normalized = this.readString(value);
+    return [
+      'song',
+      'anime-voice',
+      'movie-quote',
+      'tv-dialogue',
+      'speech',
+    ].includes(normalized)
+      ? (normalized as MediaSourceType)
+      : undefined;
+  }
+
+  private normalizeDraftAssetMetadata(
+    raw: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const metadataSources = [
+      raw.metadata,
+      raw.entityMetadata,
+      raw.assetMetadata,
+      raw.aiMetadata,
+      raw.gameplayMetadata,
+      raw.musicMetadata,
+    ];
+    return metadataSources.reduce<Record<string, unknown>>((acc, source) => {
+      if (!source || typeof source !== 'object' || Array.isArray(source))
+        return acc;
+      return { ...acc, ...(source as Record<string, unknown>) };
+    }, {});
+  }
+
+  private enrichAssetRequestWithDraftMetadata(
+    request: AssetRequest,
+    metadata: Record<string, unknown>,
+  ): AssetRequest {
+    const enriched: AssetRequest = { ...request };
+    const inheritString = (
+      target: keyof AssetRequest,
+      ...sources: string[]
+    ) => {
+      if (this.readString(enriched[target])) return;
+      for (const source of sources) {
+        const value = this.readString(metadata[source]);
+        if (value) {
+          (enriched as Record<string, unknown>)[target] = value;
+          return;
+        }
+      }
     };
+
+    inheritString('entity', 'canonicalEntity', 'entity', 'character', 'name');
+    inheritString(
+      'canonicalEntity',
+      'canonicalEntity',
+      'entity',
+      'character',
+      'name',
+    );
+    inheritString(
+      'searchEntity',
+      'searchEntity',
+      'canonicalEntity',
+      'entity',
+      'character',
+      'name',
+    );
+    inheritString('searchContext', 'searchContext', 'context', 'description');
+    inheritString('context', 'context', 'searchContext', 'description');
+    inheritString('franchise', 'franchise', 'series', 'anime', 'work');
+    inheritString('categoryType', 'categoryType', 'category', 'medium');
+    inheritString('entityType', 'entityType', 'type');
+    inheritString('originalName', 'originalName', 'japaneseName');
+    inheritString('localizedName', 'localizedName', 'arabicName');
+    inheritString('englishTitle', 'englishTitle', 'franchiseEnglishTitle');
+    inheritString('arabicTitle', 'arabicTitle', 'franchiseArabicTitle');
+    inheritString('visualHint', 'visualHint', 'imageHint');
+
+    if (!Array.isArray(enriched.aliases)) {
+      const aliases = [
+        ...this.readStringArray(metadata.aliases),
+        ...this.readStringArray(metadata.alternateNames),
+        ...this.readStringArray(metadata.nicknames),
+      ];
+      if (aliases.length) enriched.aliases = Array.from(new Set(aliases));
+    }
+
+    return enriched;
   }
 
   private normalizeWrongAnswers(
@@ -1523,6 +2119,32 @@ Songs category special rules:
       normalized.includes('اغاني') ||
       normalized.includes('موسيقى')
     );
+  }
+
+  private isFromCategory(categoryName: string): boolean {
+    const normalized = categoryName.toLowerCase().trim();
+    return normalized === 'from' || normalized === 'فروم';
+  }
+
+  private isVideoGamesCategory(catalogName: string, categoryName: string) {
+    const normalized = `${catalogName} ${categoryName}`
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ـ\u064b-\u065f\u0670]/g, '')
+      .replace(/\s+/g, ' ');
+
+    return [
+      'العاب',
+      'الالعاب',
+      'العاب الفيديو',
+      'فيديو قيمز',
+      'قيمز',
+      'video games',
+      'videogames',
+      'games',
+      'gaming',
+    ].some((keyword) => normalized.includes(keyword));
   }
 
   private async callAiProvider(

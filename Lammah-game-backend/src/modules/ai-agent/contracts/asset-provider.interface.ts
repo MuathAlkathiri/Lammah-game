@@ -1,5 +1,5 @@
 export type QuestionAssetType =
-  'text' | 'image' | 'audio' | 'quote' | 'emoji' | 'timeline';
+  'text' | 'image' | 'audio' | 'video' | 'quote' | 'emoji' | 'timeline';
 
 export type GameMode =
   | 'trivia'

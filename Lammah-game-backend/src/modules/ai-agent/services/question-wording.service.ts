@@ -6,6 +6,7 @@ export type WordingIssueCode =
   | 'QUESTION_ACADEMIC_STYLE'
   | 'QUESTION_CONTAINS_EXPLANATION'
   | 'QUESTION_CONTAINS_PARENTHESES'
+  | 'QUESTION_ROBOTIC_RIDDLE_STYLE'
   | 'QUESTION_VAGUE'
   | 'QUESTION_ANSWER_LEAKAGE';
 
@@ -45,6 +46,14 @@ const EXPLANATION_PATTERNS = [
   /أي بمعنى/i,
 ];
 
+const ROBOTIC_RIDDLE_PATTERNS = [
+  /(?:من|ما)\s+(?:هو|هي)\s+(?:الشخصية|الشخص|العنصر|الكائن|الأسترالطي|الاستراتيجي)\s+(?:الذي|التي)/i,
+  /(?:الشخصية|الشخص|العنصر|الكائن)\s+(?:الذي|التي)\s+(?:يمتلك|تمتلك|يتميز|تتميز|يرتبط|ترتبط|يحمل|تحمل)/i,
+  /(?:دائمًا|دائماً)\s+عن\s+الأسرار/i,
+  /خلف\s+الكواليس/i,
+  /قراءة\s+(?:الأحداث|الماضية)/i,
+];
+
 @Injectable()
 export class QuestionWordingService {
   countWords(value: string) {
@@ -81,6 +90,8 @@ export class QuestionWordingService {
       issues.add('QUESTION_CONTAINS_EXPLANATION');
     if (/[([][^\])]+[\])]/.test(question))
       issues.add('QUESTION_CONTAINS_PARENTHESES');
+    if (ROBOTIC_RIDDLE_PATTERNS.some((pattern) => pattern.test(question)))
+      issues.add('QUESTION_ROBOTIC_RIDDLE_STYLE');
     if (words < 4 || /^(ما هذا|من هذا|ما هي|ما هو)؟?$/i.test(question.trim()))
       issues.add('QUESTION_VAGUE');
 
@@ -130,6 +141,7 @@ export class QuestionWordingService {
     return `Shorten one Arabic party-game question. Return JSON only: {"question":"..."}.
 Keep the exact factual meaning, correct answer, difficulty, and game mode. Do not add facts or alter asset needs.
 Write one natural, direct question readable aloud in under 6 seconds. Remove introductions, explanations, parentheses, repeated clues, and academic wording. Preserve enough detail for one unambiguous answer. Hardness comes from knowledge, not sentence length.
+Make it sound like a human host, not a translated encyclopedia riddle. Prefer direct patterns such as "مين..." / "وش..." / "أي..." when they fit. Avoid "الشخصية التي..." and long relative clauses.
 Correct answer (do not include it in the question): ${input.correctAnswer}
 Difficulty: ${input.difficulty}
 Game mode: ${input.gameMode}
